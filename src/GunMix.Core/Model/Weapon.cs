@@ -54,6 +54,15 @@ public sealed class ExportSettings
 
     public double TrimTailMs { get; set; } = 120.0;
 
+    /// <summary>Source 引擎（L4D2 / GMod）导出目标：44.1 kHz / 16 bit + game_sounds 脚本。可选项，随工程保存。</summary>
+    public bool SourceEngineTarget { get; set; }
+
+    /// <summary>Source 目标下是否降混为单声道。</summary>
+    public bool SourceMono { get; set; }
+
+    /// <summary>自定义文件长度（秒）；null = 自动（按事件结束或截尾）。</summary>
+    public double? CustomLengthSeconds { get; set; }
+
     public int SingleCounter { get; set; } = 1;
 
     public int BurstCounter { get; set; } = 1;
@@ -69,6 +78,9 @@ public sealed class ExportSettings
         TrimTail = TrimTail,
         TrimThresholdDb = TrimThresholdDb,
         TrimTailMs = TrimTailMs,
+        SourceEngineTarget = SourceEngineTarget,
+        SourceMono = SourceMono,
+        CustomLengthSeconds = CustomLengthSeconds,
         SingleCounter = SingleCounter,
         BurstCounter = BurstCounter,
     };

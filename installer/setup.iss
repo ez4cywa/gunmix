@@ -4,7 +4,7 @@
 
 #define AppName "枪声分层工作台"
 #define AppNameEn "GunMix"
-#define AppVersion "0.2.0"
+#define AppVersion "0.3.0"
 #define AppPublisher "EZ4"
 #define AppExeName "GunMix.App.exe"
 ; AppId 一旦确定不要修改，否则升级安装会被识别为另一个程序

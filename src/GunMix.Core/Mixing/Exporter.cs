@@ -45,12 +45,50 @@ public static class Exporter
         int ditherSeed,
         double? attenuateToDbfs,
         string finalPath,
-        bool overwrite)
+        bool overwrite,
+        bool sourceFormat = false,
+        bool monoDownmix = false)
     {
         try
         {
             if (File.Exists(finalPath) && !overwrite)
                 return new ExportResult { Success = false, Error = $"目标文件已存在：{Path.GetFileName(finalPath)}（默认生成新名称）" };
+
+            // Source 引擎目标：固定 44.1 kHz / 16 bit PCM，可选降混单声道
+            if (sourceFormat)
+            {
+                var source = ExportTargets.SourceEngine.ToSourcePcm(mixedData, sampleRate, channels, monoDownmix, dither, ditherSeed);
+                double sPeak = 0;
+                foreach (var v in mixedData)
+                {
+                    double a = Math.Abs((double)v);
+                    if (a > sPeak) sPeak = a;
+                }
+                double? sGain = null;
+                double sourceGain = 1.0;
+                if (sPeak > 1.0 && attenuateToDbfs is { } tgt)
+                {
+                    sourceGain = Math.Pow(10, tgt / 20.0) / sPeak;
+                    sGain = 20 * Math.Log10(sourceGain);
+                    source = ExportTargets.SourceEngine.ToSourcePcm(mixedData, sampleRate, channels, monoDownmix, dither, ditherSeed, sourceGain);
+                }
+                string sTemp = Path.Combine(Path.GetDirectoryName(finalPath) ?? ".",
+                    Path.GetFileNameWithoutExtension(finalPath) + ".part" + Path.GetExtension(finalPath));
+                WavWriter.Write(sTemp, ExportTargets.SourceEngine.SampleRate, ExportTargets.SourceEngine.BitsPerSample,
+                    false, monoDownmix ? 1 : channels, source);
+                File.Move(sTemp, finalPath, overwrite);
+                int sQuantizedPeak = Quantizer.BytesToInt16(source).Max(Math.Abs) is { } sm ? sm : 0;
+                double sDur = (double)source.Length / (ExportTargets.SourceEngine.SampleRate * (monoDownmix ? 1 : channels) * 2);
+                return new ExportResult
+                {
+                    Success = true,
+                    FinalPath = finalPath,
+                    DurationSeconds = sDur,
+                    PeakDbfs = sPeak > 0 ? 20 * Math.Log10(sPeak) : -120,
+                    QuantizedPeakDbfs = sQuantizedPeak > 0 ? 20 * Math.Log10(sQuantizedPeak / 32767.0) : -120,
+                    AppliedGainDb = sGain,
+                };
+            }
 
             double peak = 0;
             foreach (var v in mixedData)
@@ -131,5 +169,18 @@ public static class Exporter
             if (a > peak) peak = a;
         }
         return peak;
+    }
+
+    /// <summary>
+    /// 自定义文件长度：输出精确到 <paramref name="seconds"/> 秒。
+    /// 比混音长则尾部补静音，比混音短则截断。
+    /// </summary>
+    public static float[] ApplyCustomLength(float[] interleaved, int sampleRate, int channels, double seconds)
+    {
+        int targetSamples = Math.Max(channels, (int)Math.Round(seconds * sampleRate, MidpointRounding.ToEven) * channels);
+        if (interleaved.Length == targetSamples) return interleaved;
+        var result = new float[targetSamples];
+        Array.Copy(interleaved, result, Math.Min(interleaved.Length, result.Length));
+        return result;
     }
 }

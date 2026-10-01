@@ -77,6 +77,49 @@ public sealed class AnimationWindowVm : ViewModelBase
         set => Set(ref _outputDir, value);
     }
 
+    /// <summary>Source 引擎格式导出（44.1 kHz / 16 bit + game_sounds 脚本）。</summary>
+    public bool ExportSourceFormat
+    {
+        get => _owner.Project.ActiveWeapon?.Export.SourceEngineTarget == true;
+        set
+        {
+            if (_owner.Project.ActiveWeapon is { } w)
+            {
+                w.Export.SourceEngineTarget = value;
+                Raise();
+            }
+        }
+    }
+
+    /// <summary>自定义文件长度开关。</summary>
+    public bool UseCustomLength
+    {
+        get => _owner.Project.ActiveWeapon?.Export.CustomLengthSeconds != null;
+        set
+        {
+            if (_owner.Project.ActiveWeapon is { } w)
+            {
+                w.Export.CustomLengthSeconds = value ? w.Export.CustomLengthSeconds ?? 3.0 : null;
+                Raise();
+                Raise(nameof(CustomLengthSeconds));
+            }
+        }
+    }
+
+    /// <summary>自定义文件长度（秒）。</summary>
+    public double CustomLengthSeconds
+    {
+        get => _owner.Project.ActiveWeapon?.Export.CustomLengthSeconds ?? 3.0;
+        set
+        {
+            if (_owner.Project.ActiveWeapon is { } w)
+            {
+                w.Export.CustomLengthSeconds = Math.Clamp(Math.Round(value, 1), 0.1, 60);
+                Raise();
+            }
+        }
+    }
+
     // ───────── 扫描状态 ─────────
 
     private bool _scanning;
@@ -530,7 +573,8 @@ public sealed class AnimationWindowVm : ViewModelBase
         Task.Run(() => _owner.ExportAnimation(clip.Model, path,
                 export?.BitDepth ?? 24, export?.DitherEnabled ?? true, export?.DitherSeed ?? 20260927,
                 export?.AttenuateToDbfs,
-                export == null || export.TrimTail, export?.TrimThresholdDb ?? -60, export?.TrimTailMs ?? 120))
+                export == null || export.TrimTail, export?.TrimThresholdDb ?? -60, export?.TrimTailMs ?? 120,
+                export?.CustomLengthSeconds))
             .ContinueWith(t =>
             {
                 if (t.IsFaulted)

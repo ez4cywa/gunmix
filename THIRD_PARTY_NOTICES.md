@@ -28,6 +28,21 @@ The CAST binary layout was understood from DTZxPorter's open-source CAST project
 (MIT); `SoundBankIndex` reads the `{snd, alias, alias2}` JSON structure as-is, with
 no third-party parsing library.
 
+## Source engine format reference
+
+The optional Left 4 Dead 2 / Garry's Mod export target follows Source engine
+conventions: PCM 44.1 kHz / 16-bit WAV, plus a `game_sounds_*.txt` sound script.
+The `game_sounds` KeyValues syntax (top-level entries with `channel` / `volume` /
+`soundlevel` / `pitch`, single file via `wave`, variants via `rndwave`) follows the
+Source SDK's own `game_sounds_weapons.txt`:
+
+- source-sdk-2025 (`game/mod_hl2mp/scripts/game_sounds_weapons.txt`) — MIT
+  https://github.com/Yuis-Archives/source-sdk-2025
+
+Left 4 Dead 2 and Garry's Mod are trademarks of their respective owners. This
+project is not affiliated with, endorsed by, or connected to Valve, Hidden
+Entertainment, or Facepunch.
+
 ## 本项目的独立实现说明
 
 `CastFile.cs` 是为 C# / .NET 10 重写的独立实现，只解析音效装配所需的最小信息（动画帧率、循环状态、通知名与关键帧），不编辑、转换或修复 `.cast` 文件。这样做的原因是把功能收在本项目内，用户不需要安装 Python 或下载外部可执行文件。

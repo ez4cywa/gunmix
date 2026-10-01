@@ -7,6 +7,7 @@ using GunMix.App.Services;
 using GunMix.Core.Assets;
 using GunMix.Core.Audio;
 using GunMix.Core.Cast;
+using GunMix.Core.ExportTargets;
 using GunMix.Core.Model;
 using GunMix.Core.Mixing;
 using GunMix.Core.Persistence;
@@ -1539,6 +1540,11 @@ public sealed class MainViewModel : ViewModelBase
             ? TailTrimmer.Trim(mix.Data, 2, _project.SampleRate, options.TrimThresholdDb, options.TrimTailMs)
             : new TailTrimResult(mix.Data, 0, mix.Data.Length / 2L);
 
+        // 自定义文件长度：非 null 时精确到该秒数，覆盖自动截尾
+        var exportData = options.CustomLengthSeconds is { } customLen
+            ? Exporter.ApplyCustomLength(trimmed.Data, _project.SampleRate, 2, customLen)
+            : trimmed.Data;
+
         string prefix = string.IsNullOrWhiteSpace(weapon.Export.NamePrefix) ? weapon.Name : weapon.Export.NamePrefix;
         string fileName = kind == ManifestKind.Single
             ? $"{prefix}_single_{weapon.Export.SingleCounter:000}.wav"
@@ -1550,13 +1556,18 @@ public sealed class MainViewModel : ViewModelBase
         if (File.Exists(finalPath) && !options.Overwrite)
             finalPath = Path.Combine(outDir, Path.GetFileNameWithoutExtension(fileName) + "_new" + Path.GetExtension(fileName));
 
-        var result = Exporter.WriteWav(trimmed.Data, _project.SampleRate, 2, options.BitDepth,
-            options.Dither, options.DitherSeed, options.AttenuateToDbfs, finalPath, options.Overwrite) with
+        var result = Exporter.WriteWav(exportData, _project.SampleRate, 2, options.BitDepth,
+            options.Dither, options.DitherSeed, options.AttenuateToDbfs, finalPath, options.Overwrite,
+            sourceFormat: options.Target == ExportTarget.SourceEngine,
+            monoDownmix: options.SourceMono) with
         {
             TrimmedFrames = trimmed.RemovedFrames,
             TrimThresholdDb = options.TrimTail ? options.TrimThresholdDb : null,
             TrimTailMs = options.TrimTail ? options.TrimTailMs : null,
         };
+
+        if (result.Success && options.Target == ExportTarget.SourceEngine)
+            WriteGameSoundsScript(weapon.Export.NamePrefix.Length > 0 ? weapon.Export.NamePrefix : weapon.Name, outDir);
 
         if (result.Success)
         {
@@ -1576,6 +1587,9 @@ public sealed class MainViewModel : ViewModelBase
             weapon.Export.TrimTail = options.TrimTail;
             weapon.Export.TrimThresholdDb = options.TrimThresholdDb;
             weapon.Export.TrimTailMs = options.TrimTailMs;
+            weapon.Export.SourceEngineTarget = options.Target == ExportTarget.SourceEngine;
+            weapon.Export.SourceMono = options.SourceMono;
+            weapon.Export.CustomLengthSeconds = options.CustomLengthSeconds;
             MarkDirty();
         }
         return result;
@@ -1599,6 +1613,27 @@ public sealed class MainViewModel : ViewModelBase
         public bool TrimTail { get; set; } = true;
         public double TrimThresholdDb { get; set; } = -60.0;
         public double TrimTailMs { get; set; } = 120.0;
+
+        /// <summary>导出目标：通用 WAV，或 Source 引擎（Left 4 Dead 2 / Garry's Mod）格式。可选项。</summary>
+        public ExportTarget Target { get; set; } = ExportTarget.Generic;
+
+        /// <summary>Source 目标下是否降混为单声道（3D 空间声源的常规做法）。</summary>
+        public bool SourceMono { get; set; }
+
+        /// <summary>
+        /// 自定义文件长度（秒）。非 null 时输出精确到该时长：
+        /// 比混音长则尾部补静音，比混音短则截断。覆盖自动截尾。
+        /// </summary>
+        public double? CustomLengthSeconds { get; set; }
+    }
+
+    public enum ExportTarget
+    {
+        /// <summary>通用 WAV：48 kHz / 立体声，位深与抖动按上面设置。</summary>
+        Generic,
+
+        /// <summary>Source 引擎（Left 4 Dead 2 / Garry's Mod）：44.1 kHz / 16 bit PCM + game_sounds 脚本。</summary>
+        SourceEngine,
     }
 
     // ───────────────────────── 动画音效 ─────────────────────────
@@ -1740,8 +1775,10 @@ public sealed class MainViewModel : ViewModelBase
 
     internal ExportResult? ExportAnimation(
         AnimationClip clip, string outputPath, int bitDepth, bool dither, int ditherSeed,
-        double? attenuateToDbfs, bool trimTail, double trimThresholdDb, double trimTailMs)
+        double? attenuateToDbfs, bool trimTail, double trimThresholdDb, double trimTailMs,
+        double? customLengthSeconds = null)
     {
+        var export = _project.ActiveWeapon?.Export;
         var timeline = CompileAnimation(clip);
         if (timeline.Events.Count == 0)
             return new ExportResult { Success = false, Error = "没有已指定文件且启用的音频事件。" };
@@ -1756,13 +1793,22 @@ public sealed class MainViewModel : ViewModelBase
             ? TailTrimmer.Trim(mix.Data, 2, _project.SampleRate, trimThresholdDb, trimTailMs)
             : new TailTrimResult(mix.Data, 0, mix.Data.Length / 2L);
 
-        var result = Exporter.WriteWav(trimmed.Data, _project.SampleRate, 2, bitDepth, dither, ditherSeed,
-            attenuateToDbfs, outputPath, overwrite: false) with
+        var exportData = customLengthSeconds is { } len
+            ? Exporter.ApplyCustomLength(trimmed.Data, _project.SampleRate, 2, len)
+            : trimmed.Data;
+
+        var result = Exporter.WriteWav(exportData, _project.SampleRate, 2, bitDepth, dither, ditherSeed,
+            attenuateToDbfs, outputPath, overwrite: false,
+            sourceFormat: export?.SourceEngineTarget == true,
+            monoDownmix: export?.SourceMono == true) with
         {
             TrimmedFrames = trimmed.RemovedFrames,
             TrimThresholdDb = trimTail ? trimThresholdDb : null,
             TrimTailMs = trimTail ? trimTailMs : null,
         };
+
+        if (result.Success && export?.SourceEngineTarget == true)
+            WriteGameSoundsScript(clip.WeaponKey.Length > 0 ? clip.WeaponKey : clip.Name, Path.GetDirectoryName(outputPath) ?? ".");
 
         if (result.Success)
         {
@@ -1780,6 +1826,44 @@ public sealed class MainViewModel : ViewModelBase
     {
         var asset = _project.Assets.FirstOrDefault(a => a.Id == id);
         return asset == null ? "(缺失)" : AnimationSoundLibrary.BaseName(asset.FileName);
+    }
+
+    /// <summary>
+    /// 生成 game_sounds_*.txt（Source 引擎 / L4D2 / GMod）。可选项，与 Source 目标配套。
+    /// 扫描输出目录里本次武器的 WAV，按事件归类：多个变体自动写成 rndwave 列表，
+    /// 语法对齐 Source SDK 的 game_sounds_weapons.txt（顶层条目 + channel/volume/soundlevel/pitch）。
+    /// </summary>
+    private static void WriteGameSoundsScript(string weaponName, string outputDirectory)
+    {
+        var safe = SourceEngine.SanitizeIdentifier(weaponName);
+        var byEvent = new SortedDictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var wav in Directory.EnumerateFiles(outputDirectory, "*.wav").OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+        {
+            var fileName = Path.GetFileName(wav);
+            var ev = EventNameOf(fileName, safe);
+            if (!byEvent.TryGetValue(ev, out var list)) byEvent[ev] = list = [];
+            list.Add(SourceEngine.GamePath(weaponName, fileName));
+        }
+        if (byEvent.Count == 0) return;
+
+        var entries = byEvent.Select(kv => new SourceEngine.SoundEntry(
+            kv.Key,
+            SourceEngine.ChannelWeapon,
+            "1.0",
+            SourceEngine.SoundLevelGunfire,
+            "PITCH_NORM",
+            kv.Value));
+        var text = SourceEngine.BuildGameSounds(weaponName, entries);
+        File.WriteAllText(Path.Combine(outputDirectory, $"game_sounds_{safe}.txt"), text, new UTF8Encoding(false));
+    }
+
+    /// <summary>文件名 → game_sounds 事件名：<c>*_single_*</c> → Single，<c>*_burst_*</c> → Burst，其余用基名。</summary>
+    private static string EventNameOf(string fileName, string weaponSafe)
+    {
+        var stem = Path.GetFileNameWithoutExtension(fileName);
+        if (stem.Contains("_single_")) return $"Weapon_{weaponSafe}.Single";
+        if (stem.Contains("_burst_")) return $"Weapon_{weaponSafe}.Burst";
+        return $"Weapon_{weaponSafe}.{SourceEngine.SanitizeIdentifier(stem)}";
     }
 
     internal AssetInfo? FindAnimationAsset(Guid id) => _project.Assets.FirstOrDefault(a => a.Id == id);

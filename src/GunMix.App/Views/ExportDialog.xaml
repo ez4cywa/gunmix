@@ -12,24 +12,31 @@
                 <ColumnDefinition/>
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
-                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
             </Grid.RowDefinitions>
-            <TextBlock Text="格式" VerticalAlignment="Center"/>
-            <ComboBox x:Name="CmbFormat" Grid.Column="1" Width="260" HorizontalAlignment="Left" SelectionChanged="OnFormatChanged">
+            <TextBlock Text="导出目标" VerticalAlignment="Center"/>
+            <ComboBox x:Name="CmbTarget" Grid.Column="1" Width="380" HorizontalAlignment="Left" SelectionChanged="OnTargetChanged">
+                <ComboBoxItem Content="通用 WAV（48 kHz / 立体声）" Tag="Generic" IsSelected="True"/>
+                <ComboBoxItem Content="Source 引擎 · Left 4 Dead 2 / Garry's Mod（44.1 kHz / 16 bit）" Tag="SourceEngine"/>
+            </ComboBox>
+
+            <TextBlock Grid.Row="1" Text="格式" VerticalAlignment="Center" Margin="0,10,0,0"/>
+            <ComboBox x:Name="CmbFormat" Grid.Row="1" Grid.Column="1" Width="260" HorizontalAlignment="Left"
+                      Margin="0,10,0,0" SelectionChanged="OnFormatChanged">
                 <ComboBoxItem Content="48 kHz / 24 bit PCM / 立体声" Tag="24"/>
                 <ComboBoxItem Content="48 kHz / 16 bit PCM / 立体声" Tag="16"/>
                 <ComboBoxItem Content="48 kHz / 32 bit float / 立体声" Tag="32"/>
             </ComboBox>
 
-            <TextBlock Grid.Row="1" Text="抖动" VerticalAlignment="Center" Margin="0,10,0,0"/>
-            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,10,0,0">
+            <TextBlock Grid.Row="2" Text="抖动" VerticalAlignment="Center" Margin="0,10,0,0"/>
+            <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,10,0,0">
                 <CheckBox x:Name="ChkDither" Content="TPDF 抖动（整数导出默认启用）" IsChecked="True" VerticalAlignment="Center"/>
                 <TextBlock Text="种子" Margin="18,0,6,0" VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}"/>
                 <TextBox x:Name="TxtSeed" Width="110" Style="{StaticResource NumericBox}"/>
             </StackPanel>
 
-            <TextBlock Grid.Row="2" Text="输出位置" VerticalAlignment="Center" Margin="0,10,0,0"/>
-            <Grid Grid.Row="2" Grid.Column="1" Margin="0,10,0,0">
+            <TextBlock Grid.Row="3" Text="输出位置" VerticalAlignment="Center" Margin="0,10,0,0"/>
+            <Grid Grid.Row="3" Grid.Column="1" Margin="0,10,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition/>
                     <ColumnDefinition Width="Auto"/>
@@ -38,12 +45,12 @@
                 <Button Grid.Column="1" Content="浏览…" Margin="6,0,0,0" Click="OnBrowse" ToolTip="选择导出目录"/>
             </Grid>
 
-            <TextBlock Grid.Row="3" Text="越界处理" VerticalAlignment="Center" Margin="0,10,0,0"/>
-            <CheckBox x:Name="ChkAttenuate" Grid.Row="3" Grid.Column="1" Margin="0,10,0,0" VerticalAlignment="Center"
+            <TextBlock Grid.Row="4" Text="越界处理" VerticalAlignment="Center" Margin="0,10,0,0"/>
+            <CheckBox x:Name="ChkAttenuate" Grid.Row="4" Grid.Column="1" Margin="0,10,0,0" VerticalAlignment="Center"
                       Content="峰值越界时降低总输出至 -1 dBFS 再导出（实际增益记录进报告）"/>
 
-            <TextBlock Grid.Row="4" Text="尾部截断" VerticalAlignment="Center" Margin="0,10,0,0"/>
-            <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="0,10,0,0">
+            <TextBlock Grid.Row="5" Text="尾部截断" VerticalAlignment="Center" Margin="0,10,0,0"/>
+            <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal" Margin="0,10,0,0">
                 <CheckBox x:Name="ChkTrimTail" Content="自动截掉尾部静音" IsChecked="True" VerticalAlignment="Center"
                           ToolTip="从混合结果末尾向前找最后一个超过阈值的采样，其后保留设定毫秒再截断；只影响导出文件，不改素材"/>
                 <TextBlock Text="阈值 dB" Margin="18,0,6,0" VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}"/>
@@ -53,9 +60,25 @@
                 <TextBox x:Name="TxtTrimTailMs" Width="58" Style="{StaticResource NumericBox}" Text="120"
                          ToolTip="截断点后保留的自然尾巴毫秒数（0 ～ 2000）"/>
             </StackPanel>
+
+            <TextBlock Grid.Row="6" Text="Source 声道" VerticalAlignment="Center" Margin="0,10,0,0"/>
+            <CheckBox x:Name="ChkSourceMono" Grid.Row="6" Grid.Column="1" Margin="0,10,0,0" VerticalAlignment="Center"
+                      IsEnabled="False"
+                      Content="降混为单声道（Source 3D 空间声源的常规做法；默认保留双声道）"/>
+
+            <TextBlock Grid.Row="7" Text="文件长度" VerticalAlignment="Center" Margin="0,10,0,0"/>
+            <StackPanel Grid.Row="7" Grid.Column="1" Orientation="Horizontal" Margin="0,10,0,0">
+                <CheckBox x:Name="ChkCustomLength" Content="自定义（秒）" VerticalAlignment="Center"
+                          Checked="OnCustomLengthChanged" Unchecked="OnCustomLengthChanged"
+                          ToolTip="启用后输出精确到该时长：比混音长则尾部补静音，比混音短则截断；覆盖自动截尾"/>
+                <TextBox x:Name="TxtCustomLength" Width="70" Style="{StaticResource NumericBox}" Text="3.0"
+                         Margin="10,0,0,0" IsEnabled="False"
+                         ToolTip="文件长度（秒），0.1 ～ 60"/>
+            </StackPanel>
         </Grid>
         <TextBlock Text="默认不归一化、不加限制器；导出先写临时文件，成功后才发布最终文件名。截尾只作用于导出文件，工程与素材本体不变。"
                    Style="{StaticResource HintText}" Margin="0,8,0,0"/>
+        <TextBlock x:Name="TxtTargetHint" Style="{StaticResource HintText}" Margin="0,4,0,0" TextWrapping="Wrap"/>
 
         <Separator/>
 

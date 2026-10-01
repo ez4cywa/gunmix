@@ -317,7 +317,7 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
-                                <RowDefinition/><RowDefinition/>
+                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
                             </Grid.RowDefinitions>
                             <TextBlock Text="输出目录" VerticalAlignment="Center" FontSize="12"/>
                             <Grid Grid.Column="1">
@@ -331,6 +331,22 @@
                             <TextBlock Grid.Row="1" Text="母带增益 dB" VerticalAlignment="Center" FontSize="12" Margin="0,6,0,0"/>
                             <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding SelectedClip.MasterGainDb, UpdateSourceTrigger=LostFocus, StringFormat={}{0:0.0}}"
                                      Style="{StaticResource NumericBox}" Margin="0,6,0,0"/>
+                            <TextBlock Grid.Row="2" Text="导出目标" VerticalAlignment="Center" FontSize="12" Margin="0,6,0,0"/>
+                            <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,6,0,0">
+                                <CheckBox x:Name="ChkSourceTarget" Content="Source 引擎格式（44.1 kHz / 16 bit + game_sounds）"
+                                          IsChecked="{Binding ExportSourceFormat}" VerticalAlignment="Center"
+                                          ToolTip="转成 Source 引擎标准格式（44.1 kHz / 16 bit PCM），同目录额外生成 game_sounds_*.txt 脚本"/>
+                            </StackPanel>
+                            <TextBlock Grid.Row="3" Text="文件长度" VerticalAlignment="Center" FontSize="12" Margin="0,6,0,0"/>
+                            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,6,0,0">
+                                <CheckBox x:Name="ChkAnimCustomLength" Content="自定义（秒）" IsChecked="{Binding UseCustomLength}"
+                                          VerticalAlignment="Center"
+                                          ToolTip="启用后输出精确到该时长：比混音长则尾部补静音，比混音短则截断"/>
+                                <TextBox Text="{Binding CustomLengthSeconds, UpdateSourceTrigger=LostFocus, StringFormat={}{0:0.0#}}"
+                                         Width="56" Style="{StaticResource NumericBox}" Margin="8,0,0,0"
+                                         IsEnabled="{Binding UseCustomLength}"
+                                         ToolTip="文件长度（秒）"/>
+                            </StackPanel>
                         </Grid>
                         <Button Content="导出这条动画（WAV + JSON）" Command="{Binding ExportCommand}" Margin="0,10,0,0"
                                 MinHeight="30" Style="{StaticResource AccentButton}"

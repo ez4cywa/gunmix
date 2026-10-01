@@ -78,6 +78,7 @@
             <!-- ── 左：武器与素材库 ── -->
             <Border Grid.Column="0" Background="{StaticResource PanelBg}" BorderBrush="{StaticResource BorderBrush}"
                     BorderThickness="1" CornerRadius="4" Margin="0,0,6,0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <Grid Margin="8">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -198,6 +199,7 @@
                         <TextBlock Text="last / interrupt / fcg 为实验分支，默认不启用；原版事件条件未确认" Style="{StaticResource WarnText}" TextWrapping="Wrap"/>
                     </StackPanel>
                 </Grid>
+                </ScrollViewer>
             </Border>
 
             <!-- ── 中：混音区 + 序列 ── -->
@@ -326,7 +328,7 @@
                                         <Grid Grid.Column="4" VerticalAlignment="Center" Margin="0,0,8,0">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="62"/>
+                                                <ColumnDefinition Width="70"/>
                                             </Grid.ColumnDefinitions>
                                             <Slider Minimum="-60" Maximum="6" Value="{Binding GainDb}"
                                                     SmallChange="0.5" LargeChange="3" VerticalAlignment="Center"
@@ -337,7 +339,7 @@
                                         <Grid Grid.Column="5" VerticalAlignment="Center" Margin="0,0,8,0">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="62"/>
+                                                <ColumnDefinition Width="70"/>
                                             </Grid.ColumnDefinitions>
                                             <Slider Minimum="0" Maximum="1000" Value="{Binding DelayMs}"
                                                     SmallChange="0.1" LargeChange="10" VerticalAlignment="Center"
@@ -495,8 +497,10 @@
                         <Separator/>
 
                         <TextBlock Text="实验触发规则" Style="{StaticResource HintText}"/>
-                        <CheckBox Content="作为实验层启用（last / interrupt / FCG）" IsChecked="{Binding SelectedLayer.IsExperimental}"
-                                  Margin="0,2,0,4"/>
+                        <CheckBox IsChecked="{Binding SelectedLayer.IsExperimental}"
+                                  Margin="0,2,0,4">
+                            <TextBlock Text="作为实验层启用（last / interrupt / FCG）" TextWrapping="Wrap"/>
+                        </CheckBox>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                             <ComboBox Width="130" SelectedValue="{Binding SelectedLayer.Trigger}" SelectedValuePath="Value"
                                       DisplayMemberPath="Label" ItemsSource="{Binding TriggerOptions}"

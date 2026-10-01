@@ -29,6 +29,12 @@ public partial class ExportDialog : Window
         ChkTrimTail.IsChecked = export?.TrimTail ?? true;
         TxtTrimThreshold.Text = (export?.TrimThresholdDb ?? -60).ToString("0.#");
         TxtTrimTailMs.Text = (export?.TrimTailMs ?? 120).ToString("0.#");
+        if (export?.SourceEngineTarget == true) CmbTarget.SelectedIndex = 1;
+        ChkSourceMono.IsChecked = export?.SourceMono == true;
+        ChkCustomLength.IsChecked = export?.CustomLengthSeconds != null;
+        TxtCustomLength.Text = (export?.CustomLengthSeconds ?? 3.0).ToString("0.0#");
+        TxtCustomLength.IsEnabled = ChkCustomLength.IsChecked == true;
+        ApplyTargetState();
         UpdateInfo();
         Loaded += (_, _) => UpdateInfo();
     }
@@ -79,13 +85,52 @@ public partial class ExportDialog : Window
             TrimTail = ChkTrimTail.IsChecked == true,
             TrimThresholdDb = ParseNum(TxtTrimThreshold, -60, -90, -20),
             TrimTailMs = ParseNum(TxtTrimTailMs, 120, 0, 2000),
+            Target = CurrentTarget,
+            SourceMono = ChkSourceMono.IsChecked == true,
+            CustomLengthSeconds = ChkCustomLength.IsChecked == true
+                ? Math.Clamp(ParseNum(TxtCustomLength, 3.0, 0.1, 60), 0.1, 60)
+                : null,
         };
+    }
+
+    /// <summary>当前导出目标：通用 WAV，或 Source 引擎（L4D2 / GMod）。</summary>
+    private MainViewModel.ExportTarget CurrentTarget =>
+        CmbTarget.SelectedItem is ComboBoxItem { Tag: string t } && t == "SourceEngine"
+            ? MainViewModel.ExportTarget.SourceEngine
+            : MainViewModel.ExportTarget.Generic;
+
+    /// <summary>切换导出目标：Source 目标固定 16 bit / 44.1 kHz，并附带 game_sounds 脚本。</summary>
+    private void OnTargetChanged(object sender, SelectionChangedEventArgs e) => ApplyTargetState();
+
+    private void ApplyTargetState()
+    {
+        if (CmbFormat == null || TxtTargetHint == null) return;   // XAML 解析期间可能提前触发
+        bool source = CurrentTarget == MainViewModel.ExportTarget.SourceEngine;
+        CmbFormat.IsEnabled = !source;                            // Source 目标固定 16 bit
+        ChkSourceMono.IsEnabled = source;
+        if (source)
+        {
+            CmbFormat.SelectedIndex = 1;                          // 16 bit
+            TxtTargetHint.Text = "Source 引擎目标：固定 44.1 kHz / 16 bit PCM；同目录额外生成 game_sounds_<武器>.txt " +
+                                 "（Syntax 取自 Source SDK），把文件放进游戏的 sound/weapons/<武器>/ 与 scripts/ 即可使用。";
+        }
+        else
+        {
+            ChkSourceMono.IsChecked = false;
+            TxtTargetHint.Text = "";
+        }
     }
 
     private void OnFormatChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (ChkDither == null) return; // XAML 解析期间可能提前触发
+        if (ChkDither == null) return;   // XAML 解析期间可能提前触发
         ChkDither.IsEnabled = BitDepth != 32; // 抖动只对整数导出有意义
+    }
+
+    private void OnCustomLengthChanged(object sender, RoutedEventArgs e)
+    {
+        if (TxtCustomLength == null) return;
+        TxtCustomLength.IsEnabled = ChkCustomLength.IsChecked == true;
     }
 
     private void OnBrowse(object sender, RoutedEventArgs e)
