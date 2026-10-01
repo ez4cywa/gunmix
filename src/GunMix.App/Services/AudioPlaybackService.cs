@@ -1,0 +1,344 @@
+using System.Runtime.InteropServices;
+using NAudio.CoreAudioApi;
+using NAudio.CoreAudioApi.Interfaces;
+using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
+
+namespace GunMix.App.Services;
+
+/// <summary>
+/// 试听输出：单发或短连射预渲染后经 WASAPI 共享模式播放；
+/// 停止试听用短淡出停止当前输出（只是播放器操作）。
+/// 设备初始化在后台 MTA 线程进行：格式不匹配时 NAudio 用 DMO 重采样，必须在 MTA 线程创建，
+/// 否则在界面 STA 线程上会失败导致“无声且无提示”。
+/// </summary>
+public sealed class AudioPlaybackService : IDisposable
+{
+    private WasapiOut? _output;
+    private FadeOutProvider? _current;
+    private readonly object _lock = new();
+    private readonly MMDeviceEnumerator _enumerator;
+    private readonly MMDeviceNotificationNotifications _notificationStub;
+    private int _playGen;
+
+    public bool IsPlaying { get; private set; }
+    public string? DeviceFriendlyName { get; private set; }
+
+    public event Action? PlaybackStopped;
+    public event Action<double>? PositionChanged; // 秒
+    public event Action<double, double>? LevelsChanged; // L/R 峰值 0..1
+    public event Action? DeviceRemoved;
+
+    public AudioPlaybackService()
+    {
+        _enumerator = new MMDeviceEnumerator();
+        // 设备被拔出：停止播放并更新设备状态，不丢工程，不无限重试抢占设备。
+        _notificationStub = new MMDeviceNotificationNotifications();
+        _notificationStub.DeviceRemoved += _ =>
+        {
+            HandleDeviceRemoved();
+            DeviceRemoved?.Invoke();
+        };
+        try
+        {
+            _enumerator.RegisterEndpointNotificationCallback(_notificationStub);
+        }
+        catch
+        {
+            // 个别系统无设备枚举能力时忽略
+        }
+    }
+
+    /// <summary>枚举输出设备。</summary>
+    public IReadOnlyList<(MMDevice Device, string Name)> EnumerateDevices()
+    {
+        var list = new List<(MMDevice, string)>();
+        try
+        {
+            foreach (var d in _enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
+            {
+                list.Add((d, d.FriendlyName));
+            }
+        }
+        catch
+        {
+            // 无输出设备时允许编辑、保存和离线导出
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// 播放预渲染的 float32 交错数据（48 kHz 立体声）。
+    /// 设备创建、格式协商与重采样在 MTA 后台线程完成；完成后在调用线程上下文回调 onStarted(error)。
+    /// 所选设备失败时自动回退系统默认设备；仍失败则回调具体错误。
+    /// </summary>
+    public void Play(float[] data, int sampleRate, int channels, MMDevice? device, double monitorGainDb = 0,
+        Action<string?>? onStarted = null)
+    {
+        var ctx = SynchronizationContext.Current;
+        Stop(immediate: true);
+        int gen = ++_playGen;
+
+        Task.Run(() =>
+        {
+            string? error = null;
+            try
+            {
+                lock (_lock)
+                {
+                    if (gen != _playGen)
+                    {
+                        return; // 播放请求已被新的停止/播放取代
+                    }
+                    var output = CreateOutput(device, out var effectiveDevice);
+                    try
+                    {
+                        var source = new BufferedFloatSource(data, sampleRate, channels);
+                        var fader = new FadeOutProvider(source, monitorGainDb);
+                        fader.FadeCompleted += () => Stop(immediate: true);
+                        // 必须显式包一层 IWaveProvider：NAudio 的 Init(ISampleProvider) 扩展
+                        // 会用 WaveBuffer 把 byte[] 伪装成 float[] 回传，任何 Array.Copy / 元素赋值
+                        // 都会在播放线程上抛 ArrayTypeMismatchException，表现为“无异常但完全无声”。
+                        output.Init(new SampleProviderWaveAdapter(fader));
+                        output.Play();
+                        if (gen != _playGen)
+                        {
+                            output.Stop();
+                            output.Dispose();
+                            return;
+                        }
+                        _current = fader;
+                        _current.BlockPlayed += OnBlockPlayed;
+                        _output = output;
+                        _output.PlaybackStopped += OnStopped;
+                        IsPlaying = true;
+                        DeviceFriendlyName = effectiveDevice?.FriendlyName ?? "系统默认输出";
+                    }
+                    catch
+                    {
+                        output.Dispose();
+                        throw;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                lock (_lock)
+                {
+                    CleanupOutput();
+                    IsPlaying = false;
+                }
+                error = DescribeError(ex);
+            }
+            if (onStarted != null)
+            {
+                if (ctx != null) ctx.Post(_ => onStarted(error), null);
+                else onStarted(error);
+            }
+        });
+    }
+
+    private static string DescribeError(Exception ex) => ex switch
+    {
+        COMException ce => $"音频设备初始化失败（0x{ce.ErrorCode:X8}）。可尝试选择其他输出设备。",
+        _ => ex.Message,
+    };
+
+    private WasapiOut CreateOutput(MMDevice? device, out MMDevice? effectiveDevice)
+    {
+        if (device != null)
+        {
+            try
+            {
+                effectiveDevice = device;
+                return new WasapiOut(device, AudioClientShareMode.Shared, useEventSync: false, 120);
+            }
+            catch
+            {
+                // 所选设备失败：回退系统默认设备
+            }
+        }
+        effectiveDevice = null;
+        return new WasapiOut(AudioClientShareMode.Shared, useEventSync: false, 120);
+    }
+
+    private void OnBlockPlayed(double positionSeconds, (float L, float R) peak)
+    {
+        PositionChanged?.Invoke(positionSeconds);
+        LevelsChanged?.Invoke(Math.Abs(peak.L), Math.Abs(peak.R));
+    }
+
+    private void OnStopped(object? sender, StoppedEventArgs e)
+    {
+        bool was = IsPlaying;
+        IsPlaying = false;
+        if (was) PlaybackStopped?.Invoke();
+    }
+
+    /// <summary>停止：短淡出后停止当前输出。</summary>
+    public void Stop(bool immediate = false)
+    {
+        lock (_lock)
+        {
+            _playGen++;
+            if (_current != null && !immediate && IsPlaying)
+            {
+                _current.BeginFade(0.06); // 短淡出
+                return;
+            }
+            bool was = IsPlaying;
+            CleanupOutput();
+            IsPlaying = false;
+            if (was) PlaybackStopped?.Invoke(); // 仅在真实停止时通知，避免状态抖动
+        }
+    }
+
+    private void CleanupOutput()
+    {
+        if (_current != null) _current.BlockPlayed -= OnBlockPlayed;
+        _current = null;
+        if (_output != null)
+        {
+            _output.PlaybackStopped -= OnStopped;
+            try { _output.Stop(); } catch { /* 设备可能已拔出 */ }
+            _output.Dispose();
+            _output = null;
+        }
+    }
+
+    /// <summary>设备被拔出时停止播放并更新状态，不丢工程。</summary>
+    public void HandleDeviceRemoved()
+    {
+        Stop(immediate: true);
+    }
+
+    public void Dispose()
+    {
+        Stop(immediate: true);
+    }
+
+    /// <summary>输出设备移除通知（COM 回调适配）。</summary>
+    private sealed class MMDeviceNotificationNotifications : IMMNotificationClient
+    {
+        public event Action<string>? DeviceRemoved;
+
+        public void OnDeviceStateChanged(string deviceId, DeviceState newState) { }
+
+        public void OnDeviceAdded(string pwstrDeviceId) { }
+
+        public void OnDeviceRemoved(string deviceId) => DeviceRemoved?.Invoke(deviceId);
+
+        public void OnDefaultDeviceChanged(DataFlow flow, Role role, string defaultDeviceId) { }
+
+        public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey propertyKey) { }
+    }
+
+    /// <summary>
+    /// ISampleProvider → IWaveProvider 适配器。自己分配 float[] 暂存，用 Buffer.BlockCopy
+    /// 按原始字节交接，避免 NAudio 扩展方法用 WaveBuffer 把 byte[] 当作 float[] 传回下游。
+    /// </summary>
+    private sealed class SampleProviderWaveAdapter(ISampleProvider source) : IWaveProvider
+    {
+        private readonly ISampleProvider _source = source;
+        private float[] _scratch = Array.Empty<float>();
+
+        public WaveFormat WaveFormat { get; } = source.WaveFormat;
+
+        public int Read(byte[] buffer, int offset, int count)
+        {
+            int bytesPerSample = WaveFormat.BitsPerSample / 8;
+            if (bytesPerSample <= 0) return 0;
+            int samplesRequired = count / bytesPerSample;
+            if (samplesRequired == 0) return 0;
+            if (_scratch.Length < samplesRequired)
+                Array.Resize(ref _scratch, samplesRequired);
+
+            int read = _source.Read(_scratch, 0, samplesRequired);
+            if (read <= 0) return 0;
+            Buffer.BlockCopy(_scratch, 0, buffer, offset, read * bytesPerSample);
+            return read * bytesPerSample;
+        }
+    }
+
+    /// <summary>float 数据源，逐块上报位置与峰值（供进度与电平显示）。</summary>
+    private sealed class BufferedFloatSource(float[] data, int sampleRate, int channels) : ISampleProvider
+    {
+        private int _pos;
+
+        public WaveFormat WaveFormat { get; } = WaveFormat.CreateIeeeFloatWaveFormat(sampleRate, channels);
+
+        public int Read(float[] buffer, int offset, int count)
+        {
+            int n = Math.Min(count, data.Length - _pos);
+            if (n <= 0) return 0;
+            // BlockCopy 按字节搬运，不依赖数组元素类型
+            Buffer.BlockCopy(data, _pos * 4, buffer, offset * 4, n * 4);
+            _pos += n;
+            return n;
+        }
+    }
+
+    /// <summary>监听音量补偿在播放出口处理，不能进入导出；淡出由本类实现。</summary>
+    private sealed class FadeOutProvider : ISampleProvider
+    {
+        private readonly ISampleProvider _source;
+        private readonly float _gain;
+        private double _fadeLevel = 1;
+        private double _fadeStep;
+        private bool _fading;
+        private long _framesRead;
+
+        public event Action? FadeCompleted;
+        public event Action<double, (float, float)>? BlockPlayed;
+
+        public FadeOutProvider(ISampleProvider source, double monitorGainDb)
+        {
+            _source = source;
+            _gain = (float)Math.Pow(10, monitorGainDb / 20.0);
+        }
+
+        public WaveFormat WaveFormat => _source.WaveFormat;
+
+        public void BeginFade(double seconds)
+        {
+            _fadeStep = 1.0 / Math.Max(1, WaveFormat.SampleRate * seconds);
+            _fading = true;
+        }
+
+        public int Read(float[] buffer, int offset, int count)
+        {
+            int n = _source.Read(buffer, offset, count);
+            if (n == 0) return 0;
+
+            float peakL = 0, peakR = 0;
+            int ch = WaveFormat.Channels;
+            int frames = n / ch;
+            for (int f = 0; f < frames; f++)
+            {
+                float g = _gain;
+                if (_fading)
+                {
+                    g *= (float)Math.Max(0.0, _fadeLevel);
+                    _fadeLevel -= _fadeStep;
+                    if (_fadeLevel <= 0)
+                    {
+                        _fadeLevel = 0;
+                        _fading = false;
+                        FadeCompleted?.Invoke();
+                    }
+                }
+                for (int c = 0; c < ch; c++)
+                {
+                    int idx = offset + f * ch + c;
+                    buffer[idx] *= g;
+                    float a = Math.Abs(buffer[idx]);
+                    if (c == 0 && a > peakL) peakL = a;
+                    if (c == 1 && a > peakR) peakR = a;
+                }
+            }
+            _framesRead += frames;
+            BlockPlayed?.Invoke(_framesRead / (double)WaveFormat.SampleRate, (peakL, peakR));
+            return n;
+        }
+    }
+}

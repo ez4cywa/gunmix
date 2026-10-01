@@ -1,0 +1,117 @@
+<Window x:Class="GunMix.App.Views.ExportDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="导出 WAV — 单发 / 连发" Width="680" SizeToContent="Height"
+        ResizeMode="NoResize" WindowStartupLocation="CenterOwner" Background="{StaticResource WinBg}">
+    <StackPanel Margin="16">
+        <!-- 公共设置 -->
+        <TextBlock Text="公共设置" FontWeight="Bold" FontSize="14"/>
+        <Grid Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="86"/>
+                <ColumnDefinition/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+            </Grid.RowDefinitions>
+            <TextBlock Text="格式" VerticalAlignment="Center"/>
+            <ComboBox x:Name="CmbFormat" Grid.Column="1" Width="260" HorizontalAlignment="Left" SelectionChanged="OnFormatChanged">
+                <ComboBoxItem Content="48 kHz / 24 bit PCM / 立体声" Tag="24"/>
+                <ComboBoxItem Content="48 kHz / 16 bit PCM / 立体声" Tag="16"/>
+                <ComboBoxItem Content="48 kHz / 32 bit float / 立体声" Tag="32"/>
+            </ComboBox>
+
+            <TextBlock Grid.Row="1" Text="抖动" VerticalAlignment="Center" Margin="0,10,0,0"/>
+            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,10,0,0">
+                <CheckBox x:Name="ChkDither" Content="TPDF 抖动（整数导出默认启用）" IsChecked="True" VerticalAlignment="Center"/>
+                <TextBlock Text="种子" Margin="18,0,6,0" VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}"/>
+                <TextBox x:Name="TxtSeed" Width="110" Style="{StaticResource NumericBox}"/>
+            </StackPanel>
+
+            <TextBlock Grid.Row="2" Text="输出位置" VerticalAlignment="Center" Margin="0,10,0,0"/>
+            <Grid Grid.Row="2" Grid.Column="1" Margin="0,10,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="TxtOutDir" VerticalContentAlignment="Center"/>
+                <Button Grid.Column="1" Content="浏览…" Margin="6,0,0,0" Click="OnBrowse" ToolTip="选择导出目录"/>
+            </Grid>
+
+            <TextBlock Grid.Row="3" Text="越界处理" VerticalAlignment="Center" Margin="0,10,0,0"/>
+            <CheckBox x:Name="ChkAttenuate" Grid.Row="3" Grid.Column="1" Margin="0,10,0,0" VerticalAlignment="Center"
+                      Content="峰值越界时降低总输出至 -1 dBFS 再导出（实际增益记录进报告）"/>
+
+            <TextBlock Grid.Row="4" Text="尾部截断" VerticalAlignment="Center" Margin="0,10,0,0"/>
+            <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="0,10,0,0">
+                <CheckBox x:Name="ChkTrimTail" Content="自动截掉尾部静音" IsChecked="True" VerticalAlignment="Center"
+                          ToolTip="从混合结果末尾向前找最后一个超过阈值的采样，其后保留设定毫秒再截断；只影响导出文件，不改素材"/>
+                <TextBlock Text="阈值 dB" Margin="18,0,6,0" VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}"/>
+                <TextBox x:Name="TxtTrimThreshold" Width="58" Style="{StaticResource NumericBox}" Text="-60"
+                         ToolTip="低于此电平的尾部视为静音（-90 ～ -20）"/>
+                <TextBlock Text="保留尾 ms" Margin="12,0,6,0" VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}"/>
+                <TextBox x:Name="TxtTrimTailMs" Width="58" Style="{StaticResource NumericBox}" Text="120"
+                         ToolTip="截断点后保留的自然尾巴毫秒数（0 ～ 2000）"/>
+            </StackPanel>
+        </Grid>
+        <TextBlock Text="默认不归一化、不加限制器；导出先写临时文件，成功后才发布最终文件名。截尾只作用于导出文件，工程与素材本体不变。"
+                   Style="{StaticResource HintText}" Margin="0,8,0,0"/>
+
+        <Separator/>
+
+        <!-- 两个独立选项 -->
+        <TextBlock Text="分别输出（同一配方快照，各生成独立 WAV + recipe JSON）" FontWeight="Bold" FontSize="14"/>
+        <Grid Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 单发 -->
+            <Border Style="{StaticResource CardBorder}">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <CheckBox x:Name="ChkSingle" Content="单发音效" IsChecked="True" FontWeight="Bold" VerticalAlignment="Center"/>
+                        <Border Background="{StaticResource AccentDim}" CornerRadius="2" Padding="5,1" Margin="8,0,0,0">
+                            <TextBlock Text="一次触发" FontSize="11" Foreground="White"/>
+                        </Border>
+                    </StackPanel>
+                    <TextBlock x:Name="SingleFileName" Text="—" Style="{StaticResource HintText}" Margin="0,8,0,0"
+                               TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                    <TextBlock x:Name="SingleDuration" Text="—" Style="{StaticResource HintText}"/>
+                    <Button x:Name="BtnSingle" Content="仅导出单发" Margin="0,10,0,0" MinHeight="30" Click="OnExportSingle"/>
+                </StackPanel>
+            </Border>
+
+            <!-- 连发 -->
+            <Border Grid.Column="2" Style="{StaticResource CardBorder}">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <CheckBox x:Name="ChkBurst" Content="连发音效" IsChecked="True" FontWeight="Bold" VerticalAlignment="Center"/>
+                        <Border Background="{StaticResource AccentDim}" CornerRadius="2" Padding="5,1" Margin="8,0,0,0">
+                            <TextBlock x:Name="BurstBadge" Text="600 RPM × 6 发" FontSize="11" Foreground="White"/>
+                        </Border>
+                    </StackPanel>
+                    <TextBlock x:Name="BurstFileName" Text="—" Style="{StaticResource HintText}" Margin="0,8,0,0"
+                               TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                    <TextBlock x:Name="BurstDuration" Text="—" Style="{StaticResource HintText}"/>
+                    <Button x:Name="BtnBurst" Content="仅导出连发" Margin="0,10,0,0" MinHeight="30" Click="OnExportBurst"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Button x:Name="BtnExportChecked" Content="导出勾选的输出" FontWeight="Bold" MinHeight="32" Margin="0,12,0,0"
+                Click="OnExportChecked"/>
+
+        <ProgressBar x:Name="Bar" Height="8" Margin="0,10,0,0" IsIndeterminate="True" Visibility="Collapsed"/>
+        <TextBox x:Name="ResultText" Margin="0,10,0,0" FontFamily="Consolas" FontSize="12" MinHeight="96"
+                 MaxHeight="190" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap" IsReadOnly="True"
+                 Background="{StaticResource InputBg}" VerticalContentAlignment="Top"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="播放单发" Width="90" Margin="0,0,8,0" Click="OnPlaySingle"/>
+            <Button Content="打开文件夹" Width="100" Margin="0,0,8,0" Click="OnOpenFolder"/>
+            <Button Content="关闭" Width="90" IsCancel="True"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

@@ -1,0 +1,352 @@
+<Window x:Class="GunMix.App.Views.AnimationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ctl="clr-namespace:GunMix.App.Controls"
+        Title="动画音效工作台" Width="1360" Height="860" MinWidth="1180" MinHeight="640"
+        Background="{StaticResource WinBg}" WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <ctl:StringToBrushConverter x:Key="StringToBrush"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </Window.Resources>
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- 目录与扫描 -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="动画目录" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <Grid Grid.Column="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox Text="{Binding AnimationDir, UpdateSourceTrigger=LostFocus}" VerticalContentAlignment="Center"/>
+                <Button Grid.Column="1" Content="…" MinWidth="28" Margin="4,0,0,0" Click="OnBrowseAnim"/>
+            </Grid>
+            <TextBlock Grid.Column="2" Text="声音目录" VerticalAlignment="Center" Margin="12,0,8,0"/>
+            <Grid Grid.Column="3">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox Text="{Binding SoundDir, UpdateSourceTrigger=LostFocus}" VerticalContentAlignment="Center"/>
+                <Button Grid.Column="1" Content="…" MinWidth="28" Margin="4,0,0,0" Click="OnBrowseSound"/>
+            </Grid>
+            <TextBlock Grid.Column="4" Text="soundbank" VerticalAlignment="Center" Margin="12,0,8,0"
+                       ToolTip="sndbanks/json 目录（weapon_rex_*.json）：原版声音配置，别名→文件的权威映射；留空则只做名称推断"/>
+            <Grid Grid.Column="5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox Text="{Binding BankDir, UpdateSourceTrigger=LostFocus}" VerticalContentAlignment="Center"/>
+                <Button Grid.Column="1" Content="…" MinWidth="28" Margin="4,0,0,0" Click="OnBrowseBank"/>
+            </Grid>
+            <Button Grid.Column="6" Content="{Binding ScanButtonText}" Command="{Binding ScanCommand}"
+                    MinWidth="112" Margin="12,0,0,0" Style="{StaticResource AccentButton}"/>
+        </Grid>
+
+        <StackPanel Grid.Row="1" Margin="0,8,0,8">
+            <TextBlock Text="{Binding ScanSummary}" Foreground="{StaticResource TextSecondary}" FontSize="12"/>
+            <TextBlock Text="帧号、帧率与别名来自 .cast 实测；别名对应哪个音频文件优先取 sndbanks/json 的原版声音配置（weapon_rex_* bank），bank 无记录时才退回同武器内的名称推断或由你指定。随机容器按种子在原版成员内选取，换种子不越出该集合。"
+                       Foreground="{StaticResource WarnYellow}" FontSize="12" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding Error}" FontSize="12" TextWrapping="Wrap"
+                       Visibility="{Binding HasError, Converter={StaticResource BoolToVis}}"
+                       Foreground="{StaticResource ErrorRed}"/>
+        </StackPanel>
+
+        <!-- 三栏 -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="300"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="330"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 剪辑列表 -->
+            <Border Background="{StaticResource PanelBg}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="4" Margin="0,0,8,0">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="动画剪辑" Style="{StaticResource SectionHeader}"/>
+                    <TextBox Grid.Row="1" Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="按动画名或武器标识筛选"/>
+                    <ListBox Grid.Row="2" ItemsSource="{Binding Clips}" SelectedItem="{Binding SelectedClip}"
+                             Margin="0,8,0,0" Background="Transparent" BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border x:Name="bd" Background="{StaticResource RowBg}" CornerRadius="3" Padding="7,5" Margin="0,0,0,4"
+                                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Name}" FontWeight="Bold" TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding Name}"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding FpsLabel}" FontSize="11"
+                                                       Foreground="{StaticResource TextSecondary}" Margin="6,0,0,0"/>
+                                        </Grid>
+                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                            <TextBlock Text="{Binding WeaponKey}" FontSize="11" Foreground="{StaticResource AccentText}"/>
+                                            <TextBlock Text="{Binding LoopLabel}" FontSize="11" Foreground="{StaticResource TextSecondary}" Margin="8,0,0,0"/>
+                                            <TextBlock Text="{Binding Readiness}" FontSize="11" Margin="8,0,0,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="FontSize" Value="11"/>
+                                                        <Setter Property="Foreground" Value="{StaticResource WarnYellow}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding FullyResolved}" Value="True">
+                                                                <Setter Property="Foreground" Value="{StaticResource OkGreen}"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                        <Setter TargetName="bd" Property="Background" Value="{StaticResource RowBgSelected}"/>
+                                        <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource Accent}"/>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+
+            <!-- 事件表 -->
+            <Border Grid.Column="1" Background="{StaticResource PanelBg}" BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1" CornerRadius="4" Margin="0,0,8,0">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="音频事件" Style="{StaticResource SectionHeader}" Margin="0,0,0,0"/>
+                            <TextBlock Text="{Binding SelectedClip.Name, StringFormat='　{0}'}" VerticalAlignment="Center"
+                                       Foreground="{StaticResource AccentText}" FontSize="13"/>
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="采用全部唯一命中" Command="{Binding AssignAutoCommand}" MinHeight="26"
+                                ToolTip="只处理名称唯一命中的事件；多候选与近似候选保持待指定，不会替你猜"/>
+                        <Button Grid.Column="2" Content="容器换种子" Command="{Binding RerollCommand}" MinHeight="26" Margin="8,0,0,0"
+                                ToolTip="随机容器事件按新种子在原版成员内重选一个样本；不会引入容器之外的文件"/>
+                        <Button Grid.Column="3" Content="试听整条动画" Command="{Binding PreviewClipCommand}" MinHeight="26"
+                                Margin="8,0,0,0" Style="{StaticResource AccentButton}"/>
+                    </Grid>
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding Events}" SelectedItem="{Binding SelectedEvent}"
+                              FontSize="12" GridLinesVisibility="All"
+                              HorizontalGridLinesBrush="{StaticResource BorderBrush}"
+                              VerticalGridLinesBrush="{StaticResource BorderBrush}">
+                        <DataGrid.Columns>
+                            <DataGridCheckBoxColumn Header="启用" Binding="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}" Width="46"/>
+                            <DataGridTextColumn Header="帧" Binding="{Binding Frame}" Width="52"/>
+                            <DataGridTextColumn Header="时间 s" Binding="{Binding TimeS}" Width="70"/>
+                            <DataGridTemplateColumn Header="别名（cast 实测）" Width="*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Alias}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Alias}"
+                                                   Foreground="{StaticResource TextPrimary}" Margin="4,0"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="解析状态" Width="180">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding ConfidenceLabel}" Foreground="{Binding ConfidenceColor, Converter={StaticResource StringToBrush}}"
+                                                   Margin="4,0" TextTrimming="CharacterEllipsis"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="已指定文件" Width="220">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding FileLabel}" Margin="4,0" TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding FileLabel}"
+                                                   Foreground="{StaticResource AccentText}"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="增益 dB" Width="80">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBox Text="{Binding GainDb, UpdateSourceTrigger=LostFocus, StringFormat={}{0:0.0}}"
+                                                 Style="{StaticResource NumericBox}" BorderThickness="0" Background="Transparent"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <Expander Grid.Row="2" Header="非音频通知（IK / LOD / 结束标记，仅展示，不参与渲染）" Margin="0,6,0,0"
+                              Foreground="{StaticResource TextSecondary}" FontSize="12">
+                        <ItemsControl ItemsSource="{Binding OtherNotes}" MaxHeight="120">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="{StaticResource PanelBgLight}" CornerRadius="2" Padding="5,1" Margin="0,0,4,3">
+                                        <TextBlock Text="{Binding}" FontSize="11" Foreground="{StaticResource TextSecondary}"/>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Expander>
+                </Grid>
+            </Border>
+
+            <!-- 候选 -->
+            <Border Grid.Column="2" Background="{StaticResource PanelBg}" BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1" CornerRadius="4">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="候选文件（soundbank 成员 / 名称推断）" Style="{StaticResource SectionHeader}"/>
+                    <StackPanel Grid.Row="1" Margin="0,0,0,6">
+                        <TextBlock Text="{Binding SelectedEvent.Alias, StringFormat='别名：{0}'}" FontSize="11"
+                                   Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding SelectedEvent.ConfidenceLabel}" FontSize="12"
+                                   Foreground="{Binding SelectedEvent.ConfidenceColor, Converter={StaticResource StringToBrush}}"/>
+                    </StackPanel>
+                    <ListBox Grid.Row="2" ItemsSource="{Binding Candidates}" SelectedItem="{Binding SelectedCandidate}"
+                             Background="Transparent" BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border CornerRadius="3" Padding="6,4" Margin="0,0,0,3"
+                                        BorderThickness="1">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="{StaticResource RowBg}"/>
+                                            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                                    <Setter Property="BorderBrush" Value="{StaticResource Accent}"/>
+                                                    <Setter Property="Background" Value="{StaticResource RowBgSelected}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding Label}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding Label}"/>
+                                            <TextBlock Text="近似" FontSize="10" Margin="6,0,0,0"
+                                                       Foreground="{StaticResource WarnYellow}"
+                                                       ToolTip="名称未直接匹配，按词元重合度列出；采用前请自行确认">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="FontSize" Value="10"/>
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsApproximate}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Text="当前" FontSize="10" Margin="6,0,0,0" Foreground="{StaticResource AccentText}"
+                                                       ToolTip="该事件目前使用的文件">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="FontSize" Value="10"/>
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Sublabel}" FontSize="10" Foreground="{StaticResource TextSecondary}"
+                                                   Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Content="指定到该事件" Command="{Binding AssignCommand}" MinWidth="100"/>
+                        <Button Content="试听该事件" Command="{Binding PreviewEventCommand}" MinWidth="100" Margin="6,0,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Row="4" Margin="0,10,0,0">
+                        <Separator/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/><RowDefinition/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="输出目录" VerticalAlignment="Center" FontSize="12"/>
+                            <Grid Grid.Column="1">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox Text="{Binding OutputDir, UpdateSourceTrigger=PropertyChanged}" FontSize="11" VerticalContentAlignment="Center"/>
+                                <Button Grid.Column="1" Content="…" MinWidth="26" Margin="4,0,0,0" Click="OnBrowseOutput"/>
+                            </Grid>
+                            <TextBlock Grid.Row="1" Text="母带增益 dB" VerticalAlignment="Center" FontSize="12" Margin="0,6,0,0"/>
+                            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding SelectedClip.MasterGainDb, UpdateSourceTrigger=LostFocus, StringFormat={}{0:0.0}}"
+                                     Style="{StaticResource NumericBox}" Margin="0,6,0,0"/>
+                        </Grid>
+                        <Button Content="导出这条动画（WAV + JSON）" Command="{Binding ExportCommand}" Margin="0,10,0,0"
+                                MinHeight="30" Style="{StaticResource AccentButton}"
+                                ToolTip="沿用当前武器的位深、抖动、越界与截尾设置"/>
+                        <TextBlock Text="{Binding Status}" FontSize="11" Foreground="{StaticResource TextSecondary}"
+                                   TextWrapping="Wrap" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- 底部说明 -->
+        <Border Grid.Row="3" Background="{StaticResource PanelBg}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                CornerRadius="4" Padding="10,6" Margin="0,8,0,0">
+            <TextBlock FontSize="12" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap"
+                       Text="来源颜色：绿色＝soundbank 原版映射（唯一文件或原版随机容器，权威，可自动采用）；蓝色＝你手动指定；黄色＝只有名称推断，需要你确认；红色＝bank 记录了这个别名但它引用的音频没随素材导出。候选只在同一武器的目录内查找，绝不借用其他武器的文件；容器换种子只在原版成员集合内更换样本。存在未指定事件时导出会被拦下并说明数量。导出沿用当前武器的位深、抖动、越界衰减与自动截尾设置，配套 anim_*.anim.json 记录逐事件的帧号、别名、来源、bank、容器与所选文件哈希。"/>
+        </Border>
+    </Grid>
+</Window>

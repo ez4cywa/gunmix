@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GunMix.App/GunMix.App.csproj" />
+    <Project Path="src/GunMix.Core/GunMix.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GunMix.Core.Tests/GunMix.Core.Tests.csproj" />
+  </Folder>
+</Solution>

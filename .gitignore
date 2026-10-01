@@ -1,0 +1,26 @@
+# 构建产物
+bin/
+obj/
+publish/
+dist/
+
+# 本地素材与工程（绝不入库）
+*.wav
+*.cast
+*.gunmix.json
+*.recover.json
+*.anim.json
+*.recipe.json
+
+# 编辑器 / 系统
+.vs/
+.idea/
+*.user
+*.suo
+Thumbs.db
+.DS_Store
+
+# 本机设置与临时文件
+*.log
+*.tmp
+_audit.ps1
