@@ -51,6 +51,11 @@ public sealed class Layer
     /// </summary>
     public int BurstVoiceLimit { get; set; }
 
+    public Fire.LayerFireTrigger FireTrigger { get; set; } = Fire.LayerFireTrigger.EveryShot;
+    public string? BankKey { get; set; }
+    public string? AliasId { get; set; }
+    public double PitchRatio { get; set; } = 1;
+
     public const double VoiceStealFadeMs = 30.0;
 
     /// <summary>松扳机尾音层：实验层 + 序列释放时刻触发；只进入连发。</summary>
@@ -75,6 +80,10 @@ public sealed class Layer
         Trigger = Trigger,
         TriggerShotNumber = TriggerShotNumber,
         BurstVoiceLimit = BurstVoiceLimit,
+        FireTrigger = FireTrigger,
+        BankKey = BankKey,
+        AliasId = AliasId,
+        PitchRatio = PitchRatio,
     };
 }
 

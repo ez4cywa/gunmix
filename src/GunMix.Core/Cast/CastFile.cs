@@ -1,4 +1,4 @@
-namespace GunMix.Core.Cast;
+﻿namespace GunMix.Core.Cast;
 
 /// <summary>
 /// CAST 动画文件读取器：只解析音效装配需要的最小信息（动画帧率、循环、通知名与关键帧）。
@@ -54,7 +54,7 @@ public static class CastFile
     /// <summary>读取 .cast 的全部根节点。文件损坏或格式不符时抛出具体原因。</summary>
     public static List<Node> Read(string path)
     {
-        using var fs = File.Open(path, FileMode.Open, FileAccess.Read);
+        using var fs = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         using var f = new BinaryReader(fs);
         if (fs.Length < 16)
             throw new CastFormatException("文件小于 16 字节，不是有效的 CAST 文件。");

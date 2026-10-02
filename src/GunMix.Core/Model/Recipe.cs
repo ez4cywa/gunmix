@@ -26,6 +26,8 @@ public sealed class Recipe
     /// <summary>配方级默认随机种子。</summary>
     public int RandomSeed { get; set; } = 42;
 
+    public Fire.FireProfile? FireProfile { get; set; }
+
     /// <summary>已生成的事件清单（单发 / 连发）；保存于工程，播放与导出复用，改增益不重新抽样。</summary>
     public EventManifest? SingleManifest { get; set; }
 
@@ -42,6 +44,7 @@ public sealed class Recipe
         BurstRpm = BurstRpm,
         BurstShotCount = BurstShotCount,
         RandomSeed = RandomSeed,
+        FireProfile = FireProfile?.Clone(),
         SingleManifest = SingleManifest?.Clone(),
         BurstManifest = BurstManifest?.Clone(),
     };

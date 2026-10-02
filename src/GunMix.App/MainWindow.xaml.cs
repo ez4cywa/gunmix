@@ -12,6 +12,12 @@ namespace GunMix.App;
 public partial class MainWindow : Window
 {
     private MainViewModel Vm => (MainViewModel)DataContext;
+    private void OnOpenFireStudio(object sender,RoutedEventArgs e)
+    {
+        if(Vm.CurrentRecipe==null){Vm.ErrorText="先导入武器素材或打开工程。";return;}
+        Vm.Playback.Stop(immediate:true);
+        new FireStudioWindow(Vm){Owner=this}.ShowDialog();
+    }
 
     public MainWindow()
     {
@@ -152,6 +158,88 @@ public partial class MainWindow : Window
     {
         if ((sender as FrameworkElement)?.DataContext is LayerVm vm)
             Vm.PlayLayer(vm);
+    }
+
+    /// <summary>
+    /// 右键层行：列出同武器内与该层角色相关的分组，点击即切换素材池。
+    /// 分同角色（优先）与全部分组两段，当前分组打勾；固定样本段可选具体文件。
+    /// </summary>
+    private void OnLayerContextMenu(object sender, ContextMenuEventArgs e)
+    {
+        if (sender is not Border border || border.DataContext is not LayerVm layer) return;
+        Vm.SelectedLayer = layer;
+
+        var weaponId = Vm.CurrentWeaponId;
+        var groups = Vm.Project.Assets
+            .Where(a => a.WeaponId == weaponId && a.GroupKey.Length > 0)
+            .Select(a => a.GroupKey)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(g => g, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (groups.Count == 0) { e.Handled = true; return; }
+
+        var roleKeyword = layer.Role switch
+        {
+            "SHOT" => "shot", "MECH" => "mech", "LOW" => "lfe",
+            "SWT" => "swt", "ATMO" => "atmo", _ => "",
+        };
+
+        var menu = new System.Windows.Controls.ContextMenu();
+        var current = layer.Model.PoolGroupKey;
+
+        void AddGroupItem(string groupKey, bool isCurrent)
+        {
+            var mi = new MenuItem { Header = groupKey, IsChecked = isCurrent };
+            mi.Click += (_, _) => Vm.AssignPool(layer.Model, groupKey);
+            menu.Items.Add(mi);
+        }
+
+        // ── 同角色分组（优先） ──
+        var sameRole = groups.Where(g => g.Contains(roleKeyword, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (sameRole.Count > 0)
+        {
+            menu.Items.Add(new MenuItem { Header = $"同角色（{roleKeyword}）", IsEnabled = false });
+            foreach (var g in sameRole) AddGroupItem(g, g == current);
+            menu.Items.Add(new Separator());
+        }
+
+        // ── 其他分组 ──
+        var others = groups.Except(sameRole).ToList();
+        if (others.Count > 0)
+        {
+            menu.Items.Add(new MenuItem { Header = "其他分组", IsEnabled = false });
+            foreach (var g in others) AddGroupItem(g, g == current);
+            menu.Items.Add(new Separator());
+        }
+
+        // ── 固定样本 ──
+        var pool = layer.Pool;
+        if (pool.Count > 0)
+        {
+            menu.Items.Add(new MenuItem { Header = "固定样本", IsEnabled = false });
+            foreach (var asset in pool)
+            {
+                var mi = new MenuItem
+                {
+                    Header = $"　{asset.VariantLabel}",
+                    IsChecked = layer.Model.FixedAssetId == asset.Id && layer.Model.VariantMode == VariantMode.Fixed,
+                };
+                var assetId = asset.Id;
+                mi.Click += (_, _) =>
+                {
+                    Vm.PushUndoExternal();
+                    layer.Model.FixedAssetId = assetId;
+                    layer.Model.VariantMode = VariantMode.Fixed;
+                    Vm.NotifyEdited($"层 {layer.Name} 固定样本 → {asset.VariantLabel}");
+                    layer.RefreshAll();
+                };
+                menu.Items.Add(mi);
+            }
+        }
+
+        border.ContextMenu = menu;
+        menu.IsOpen = true;
+        e.Handled = true;
     }
 
     /// <summary>动画音效工作台：独立窗口，与分层工作台共用混音内核与工程。</summary>

@@ -43,6 +43,7 @@
                 <Button Content="保存" Command="{Binding SaveCommand}" MinWidth="70" Margin="8,0,0,0"/>
                 <Button Content="动画音效…" MinWidth="92" Margin="8,0,0,0" Click="OnOpenAnimation"
                         ToolTip="读取 .cast 的音频通知，把装弹、检视、举枪等动画装配成完整音效并导出"/>
+                <Button Content="开火场景…" Margin="8,0,0,0" Click="OnOpenFireStudio" ToolTip="弹药、末弹、动作、bank 定义与条件事件映射"/>
                 <Button Content="导出单发 / 连发" Command="{Binding ExportCommand}" MinWidth="120" Margin="8,0,0,0"
                         Style="{StaticResource AccentButton}"/>
             </StackPanel>
@@ -281,7 +282,8 @@
                             <DataTemplate>
                                 <Border x:Name="row" BorderBrush="{StaticResource BorderBrush}"
                                         BorderThickness="1" CornerRadius="3" Margin="0,0,0,4" Padding="6,4" Cursor="Hand"
-                                        MouseLeftButtonDown="OnLayerRowMouseDown">
+                                        MouseLeftButtonDown="OnLayerRowMouseDown"
+                                        ContextMenuOpening="OnLayerContextMenu">
                                     <Border.Style>
                                         <Style TargetType="Border">
                                             <Setter Property="Background" Value="{StaticResource RowBg}"/>

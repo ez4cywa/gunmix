@@ -6,10 +6,11 @@ namespace GunMix.Core.Model;
 /// <summary>顶层工程。保存格式版本、采样率、武器列表与素材；扩展名 .gunmix.json。</summary>
 public sealed class GunProject
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 3;
     public const string FileExtension = ".gunmix.json";
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
+    public string? MigrationReport { get; set; }
 
     public string ProjectName { get; set; } = "未命名工程";
 
@@ -51,6 +52,7 @@ public sealed class GunProject
     public GunProject Clone() => new()
     {
         SchemaVersion = SchemaVersion,
+        MigrationReport = MigrationReport,
         ProjectName = ProjectName,
         SampleRate = SampleRate,
         CreatedAt = CreatedAt,

@@ -35,6 +35,7 @@ public static class MixKernel
         int channels = 2,
         long? totalSamples = null)
     {
+        if(channels is not (1 or 2))throw new ArgumentException("仅支持单/双声道输出。");
         long frames = totalSamples ?? timeline.TotalSamples;
         if (frames <= 0) frames = 1;
         var data = new float[frames * channels];
@@ -56,23 +57,29 @@ public static class MixKernel
             long srcFrames = buffer.FrameCount;
             long start = ev.StartSample;
 
-            long copyFrames = Math.Min(srcFrames, frames - start);
+            if(!double.IsFinite(ev.PitchRatio)||ev.PitchRatio<=0||start<0||ev.SourceOffsetSamples<0||!double.IsFinite(ev.GainDb))throw new ArgumentException("无效的播放实例。");
+            long copyFrames = Math.Min((long)Math.Ceiling((srcFrames-ev.SourceOffsetSamples)/ev.PitchRatio), frames - start);
             // 实例抢占：从淡出起点线性淡出，结束后停止（未抢占的实例增益路径与之前完全相同）
             long fadeFrom = long.MaxValue, fadeLen = 1;
             if (ev.FadeOutStartSample is { } fadeStart)
             {
                 fadeFrom = Math.Max(0, fadeStart - start);
                 fadeLen = Math.Max(1, ev.FadeOutSamples);
-                copyFrames = Math.Min(copyFrames, fadeFrom + fadeLen);
+                copyFrames = Math.Min(copyFrames, fadeFrom + Math.Max(0,ev.FadeOutSamples));
             }
             for (long f = 0; f < copyFrames; f++)
             {
                 long dst = (start + f) * channels;
-                long s = f * srcCh;
+                double sourceFrame=ev.SourceOffsetSamples+f*ev.PitchRatio;
+                long sourceIndex=(long)sourceFrame;
+                long s = sourceIndex * srcCh;
+                long next=Math.Min(sourceIndex+1,srcFrames-1)*srcCh;
+                float fraction=(float)(sourceFrame-sourceIndex);
+                float Sample(int ch)=>src[s+ch]+(src[next+ch]-src[s+ch])*fraction;
                 float g = f < fadeFrom ? (float)gain : (float)(gain * (1.0 - (f - fadeFrom) / (double)fadeLen));
                 if (srcCh == 1)
                 {
-                    float v = src[s] * g;
+                    float v = Sample(0) * g;
                     data[dst] += v;
                     if (channels > 1) data[dst + 1] += v;
                     if (channels == 1)
@@ -83,8 +90,8 @@ public static class MixKernel
                 }
                 else
                 {
-                    float l = src[s] * g;
-                    float r = srcCh > 1 ? src[s + 1] * g : l;
+                    float l = Sample(0) * g;
+                    float r = srcCh > 1 ? Sample(1) * g : l;
                     data[dst] += l;
                     if (channels > 1) data[dst + 1] += r;
                 }
@@ -96,6 +103,8 @@ public static class MixKernel
             }
         }
 
+        peak=0;
+        foreach(float value in data)peak=Math.Max(peak,Math.Abs(value));
         return new MixResult { Data = data, Frames = frames, Peak = peak, MissingAssets = missing };
     }
 }

@@ -110,6 +110,18 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand RenameProjectCommand { get; }
 
     public GunProject Project => _project;
+    public void ApplyFireConfiguration(Recipe draft,IEnumerable<AssetInfo> pending)
+    {
+        if(CurrentRecipe is not { } recipe)return;
+        PushUndo();
+        var assets=pending.ToList();
+        RegisterAnimationAssets(assets,assets.ToDictionary(a=>a.Id,a=>Path.Combine(a.SourceDirectory,a.FileName)));
+        recipe.FireProfile=draft.FireProfile?.Clone();recipe.Layers=draft.Layers.Select(l=>l.Clone()).ToList();
+        recipe.BurstRpm=draft.BurstRpm;recipe.BurstShotCount=draft.BurstShotCount;recipe.RandomSeed=draft.RandomSeed;
+        recipe.SingleManifest=null;recipe.BurstManifest=null;
+        MarkDirty();RebuildLayers();RegenerateManifests();RebuildAssetTree();
+        StatusText="开火场景已应用；单发与连发试听、导出使用相同事件规则。";
+    }
 
     public AudioCache AudioCacheForDialogs => Cache;
 
@@ -603,7 +615,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         var kind = BurstMode ? ManifestKind.Burst : ManifestKind.Single;
         var manifest = kind == ManifestKind.Burst ? recipe.BurstManifest : recipe.SingleManifest;
-        bool stale = manifest == null || !manifest.Matches(recipe, kind);
+        bool stale = manifest == null || !manifest.Matches(recipe, kind, _project.Assets, CurrentWeaponId);
         ManifestStale = stale;
         int shots = kind == ManifestKind.Burst ? recipe.BurstShotCount : 1;
         ManifestStatus = stale
@@ -634,7 +646,7 @@ public sealed class MainViewModel : ViewModelBase
         if (weapon == null || recipe == null) return;
         var kind = BurstMode ? ManifestKind.Burst : ManifestKind.Single;
         var manifest = kind == ManifestKind.Burst ? recipe.BurstManifest : recipe.SingleManifest;
-        if (manifest == null || !manifest.Matches(recipe, kind))
+        if (manifest == null || !manifest.Matches(recipe, kind, _project.Assets, CurrentWeaponId))
             RegenerateManifests();
     }
 
@@ -1212,6 +1224,12 @@ public sealed class MainViewModel : ViewModelBase
 
     public void SaveProject()
     {
+        if(_project.MigrationReport!=null&&!string.IsNullOrEmpty(_projectPath)&&File.Exists(_projectPath))
+        {
+            using var original=System.Text.Json.JsonDocument.Parse(File.ReadAllText(_projectPath));
+            if(!original.RootElement.TryGetProperty("schemaVersion",out var v)||v.GetInt32()<3)
+            {SaveProjectAs();return;}
+        }
         if (_projectPath == null) { SaveProjectAs(); return; }
         try
         {
@@ -1528,8 +1546,8 @@ public sealed class MainViewModel : ViewModelBase
         var timeline = TimelineCompiler.Compile(recipe, manifest, _project.Assets, weapon.Id, _project.SampleRate, kind);
         if (timeline.Events.Count == 0)
             return new ExportResult { Success = false, Error = "没有可导出的事件（启用层为空或素材缺失）。" };
-        if (timeline.Issues.Count > 0)
-            return new ExportResult { Success = false, Error = "参数无效：" + string.Join("；", timeline.Issues.Select(i => $"{i.LayerName}：{i.Message}")) };
+        if (timeline.Issues.Any(i=>i.IsError))
+            return new ExportResult { Success = false, Error = "参数无效：" + string.Join("；", timeline.Issues.Where(i=>i.IsError).Select(i => $"{i.LayerName}：{i.Message}")) };
 
         var mix = MixKernel.Render(timeline, ResolveBuffer, 2);
         if (mix.MissingAssets.Count > 0)
@@ -1553,8 +1571,12 @@ public sealed class MainViewModel : ViewModelBase
         string outDir = options.OutputDirectory.Length > 0 ? options.OutputDirectory : ProjectDirectory();
         Directory.CreateDirectory(outDir);
         string finalPath = Path.Combine(outDir, fileName);
-        if (File.Exists(finalPath) && !options.Overwrite)
-            finalPath = Path.Combine(outDir, Path.GetFileNameWithoutExtension(fileName) + "_new" + Path.GetExtension(fileName));
+        if (!options.Overwrite)
+        {
+            int suffix=1;
+            while(File.Exists(finalPath))
+                finalPath=Path.Combine(outDir,Path.GetFileNameWithoutExtension(fileName)+$"_new{suffix++:000}"+Path.GetExtension(fileName));
+        }
 
         var result = Exporter.WriteWav(exportData, _project.SampleRate, 2, options.BitDepth,
             options.Dither, options.DitherSeed, options.AttenuateToDbfs, finalPath, options.Overwrite,
@@ -1572,11 +1594,20 @@ public sealed class MainViewModel : ViewModelBase
         if (result.Success)
         {
             var json = RecipeJsonBuilder.Build(_project, weapon, recipe, manifest, timeline, timeline.AssetById, kind,
-                options.BitDepth, options.Dither, options.DitherSeed, result.PeakDbfs, result.DurationSeconds,
+                options.BitDepth, options.Dither, options.DitherSeed, result.QuantizedPeakDbfs, result.DurationSeconds,
                 result.AppliedGainDb, Path.GetFileName(finalPath),
                 options.TrimTail ? (options.TrimThresholdDb, options.TrimTailMs, trimmed.RemovedFrames) : null);
             var jsonPath = Path.ChangeExtension(finalPath, ".recipe.json");
             File.WriteAllText(jsonPath, json, new UTF8Encoding(false));
+            if(recipe.FireProfile?.Enabled==true)
+            {
+                var evidence=System.Text.Json.JsonSerializer.Serialize(new { schema="gunmix-evidence/3", software=RecipeJsonBuilder.SoftwareVersion,
+                    referenceBuildSha256=GunMix.Core.Fire.EvidenceLedger.BuildSha256, facts=GunMix.Core.Fire.EvidenceLedger.Facts,
+                    sources=recipe.FireProfile.Banks.Select(b=>new{b.Name,b.BankKey,b.SourcePath,b.SourceSha256,b.ParseCapability}),
+                    ruleOrigin=recipe.FireProfile.RuleOrigin, inputFingerprint=timeline.InputFingerprint, diagnostics=timeline.Issues,
+                    events=timeline.DomainEvents, instances=timeline.Events, commands=timeline.Commands },ProjectStore.JsonOptions);
+                File.WriteAllText(Path.ChangeExtension(finalPath,".evidence-report.json"),evidence,new UTF8Encoding(false));
+            }
 
             if (kind == ManifestKind.Single) weapon.Export.SingleCounter++;
             else weapon.Export.BurstCounter++;

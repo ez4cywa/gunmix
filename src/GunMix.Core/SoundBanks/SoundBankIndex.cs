@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 
 namespace GunMix.Core.SoundBanks;
 
-/// <summary>一条 soundbank 条目：音频文件相对路径、别名、同时触发的配对别名。</summary>
+/// <summary>一条导出记录：音频引用、别名、执行语义尚未完全证实的候选关联。</summary>
 public sealed record SoundBankEntry
 {
     [JsonPropertyName("snd")] public string Snd { get; init; } = "";
@@ -105,7 +105,7 @@ public sealed class SoundBankIndex
                 index.EntryCount++;
                 if (string.IsNullOrEmpty(e.Alias)) continue;
 
-                if (!string.IsNullOrEmpty(e.Alias2) && !IsHash(e.Alias2))
+                if (!string.IsNullOrEmpty(e.Alias2))
                 {
                     if (!index._pairs.TryGetValue(e.Alias, out var set))
                         index._pairs[e.Alias] = set = new SortedSet<string>(StringComparer.Ordinal);
@@ -245,10 +245,13 @@ public sealed class SoundBankIndex
     public IReadOnlyList<ResolvedEntry> Lookup(string alias) =>
         _byAlias.TryGetValue(alias, out var list) ? list : Array.Empty<ResolvedEntry>();
 
+    /// <summary>Explicit scoped lookup; the one-argument overload remains for legacy animation projects.</summary>
+    public IReadOnlyList<ResolvedEntry> Lookup(string bank, string alias) => Lookup(alias).Where(e=>e.Bank==bank).ToArray();
+
     /// <summary>该别名引用但未导出的条目数（&gt;0 表示原版确有这一层，素材缺失）。</summary>
     public int MissingCount(string alias) => _missingByAlias.GetValueOrDefault(alias, 0);
 
-    /// <summary>bank 记录的“与谁同时触发”配对（原版层绑定证据）。</summary>
+    /// <summary>bank 中的候选关联，不代表已确认同时触发。</summary>
     public IReadOnlyList<string> PairedWith(string alias) =>
         _pairs.TryGetValue(alias, out var set) ? [.. set] : Array.Empty<string>();
 

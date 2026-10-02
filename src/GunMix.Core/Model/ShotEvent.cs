@@ -8,6 +8,18 @@ public sealed record ShotEvent
     public Guid LayerId { get; init; }
 
     public Guid AssetId { get; init; }
+    public string InstanceId { get; init; } = "";
+    public string? ParentInstanceId { get; init; }
+    public string TriggerEventId { get; init; } = "";
+    public string CommandId { get; init; } = "";
+    public string? BankKey { get; init; }
+    public string? AliasId { get; init; }
+    public int? RowIndex { get; init; }
+    public string SourceHash { get; init; } = "";
+    public string RuleOrigin { get; init; } = "legacyProjectRules";
+    public string SelectionReason { get; init; } = "";
+    public Fire.FireContext? ContextSnapshot { get; init; }
+    public double PitchRatio { get; init; } = 1;
 
     /// <summary>0 起的发号；单发恒为 0。</summary>
     public int ShotIndex { get; init; }

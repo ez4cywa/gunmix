@@ -22,6 +22,12 @@ public static class ProjectStore
     /// <summary>原子保存：先写临时文件，成功后替换目标。</summary>
     public static void Save(GunProject project, string path)
     {
+        if(project.MigrationReport!=null&&File.Exists(path))
+        {
+            using var original=JsonDocument.Parse(File.ReadAllText(path));
+            if(!original.RootElement.TryGetProperty("schemaVersion",out var version)||version.GetInt32()<3)
+                throw new InvalidOperationException("迁移工程请另存为新文件，原工程保留用于试听对比。");
+        }
         project.LastSavedAt = DateTime.Now;
         var dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
@@ -38,6 +44,13 @@ public static class ProjectStore
         var json = File.ReadAllText(path);
         var project = JsonSerializer.Deserialize<GunProject>(json, JsonOptions)
                       ?? throw new InvalidDataException("无法解析工程文件。");
+        if(project.SchemaVersion>GunProject.CurrentSchemaVersion||project.SchemaVersion<1)
+            throw new InvalidDataException("不支持的工程版本。");
+        if(project.SchemaVersion<3)
+        {
+            project.MigrationReport="旧工程按 legacyProjectRules 读取，原有混音参数保留；未自动启用开火场景。另存为新工程后写入版本 3。";
+            project.SchemaVersion=3;
+        }
         return project;
     }
 

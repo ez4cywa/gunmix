@@ -9,7 +9,7 @@ namespace GunMix.Core.Persistence;
 /// <summary>导出配套 JSON：实际事件、输出设置、源哈希、最终峰值和软件版本。</summary>
 public static class RecipeJsonBuilder
 {
-    public const string SoftwareVersion = "枪声分层工作台 0.2.0";
+    public const string SoftwareVersion = "枪声分层工作台 0.3.0";
 
     public static string Build(
         GunProject project,
@@ -36,6 +36,14 @@ public static class RecipeJsonBuilder
             weapon = weapon.Name,
             weapon_type = weapon.TypeName,
             recipe = recipe.Name,
+            input_fingerprint = timeline.InputFingerprint,
+            fire_rules = recipe.FireProfile,
+            domain_events = timeline.DomainEvents,
+            commands = timeline.Commands,
+            ammo_after = timeline.AmmoAfter,
+            diagnostics = timeline.Issues,
+            evidence = Fire.EvidenceLedger.Facts,
+            reference_build_sha256 = Fire.EvidenceLedger.BuildSha256,
             adaptive_profile = recipe.AdaptiveProfile,
             recipe_notes = recipe.Notes.Length > 0 ? recipe.Notes : null,
             project = project.ProjectName,
@@ -62,7 +70,7 @@ public static class RecipeJsonBuilder
                 {
                     threshold_db = Math.Round(tailTrim.Value.ThresholdDb, 1),
                     tail_ms = Math.Round(tailTrim.Value.TailMs, 1),
-                    removed_s = Math.Round(tailTrim.Value.RemovedFrames / 48000.0, 4),
+                    removed_s = Math.Round(tailTrim.Value.RemovedFrames / (double)project.SampleRate, 4),
                 },
             layers = recipe.Layers.Select(l => new
             {
@@ -83,6 +91,17 @@ public static class RecipeJsonBuilder
                 return new
                 {
                     layer = layer?.Name ?? "",
+                    instance_id = e.InstanceId,
+                    parent_instance_id = e.ParentInstanceId,
+                    trigger_event_id = e.TriggerEventId,
+                    command_id = e.CommandId,
+                    bank_key = e.BankKey,
+                    alias_id = e.AliasId,
+                    row_index = e.RowIndex,
+                    rule_origin = e.RuleOrigin,
+                    selection_reason = e.SelectionReason,
+                    context = e.ContextSnapshot,
+                    pitch_ratio = e.PitchRatio,
                     shot = e.ShotIndex,
                     time_s = Math.Round(e.StartSample / (double)project.SampleRate, 6),
                     file = asset?.FileName ?? "",

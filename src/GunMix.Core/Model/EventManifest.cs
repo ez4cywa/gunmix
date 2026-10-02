@@ -15,6 +15,8 @@ public sealed class EventManifest
     public string AlgorithmVersion { get; set; } = VariantAlgorithms.RandomVersion;
 
     public List<ManifestEntry> Entries { get; set; } = [];
+    public string InputFingerprint { get; set; } = "";
+    public string AssetFingerprint { get; set; } = "";
 
     public EventManifest Clone() => new()
     {
@@ -22,14 +24,19 @@ public sealed class EventManifest
         Rpm = Rpm,
         ShotCount = ShotCount,
         AlgorithmVersion = AlgorithmVersion,
+        InputFingerprint = InputFingerprint,
+        AssetFingerprint = AssetFingerprint,
         Entries = Entries.Select(e => e.Clone()).ToList(),
     };
 
     /// <summary>清单是否与当前配方参数匹配（发数、池内容、策略改变会使其失效）。</summary>
-    public bool Matches(Recipe recipe, ManifestKind kind)
+    public bool Matches(Recipe recipe, ManifestKind kind, IEnumerable<AssetInfo>? assets = null, Guid? weaponId = null)
     {
         if (Kind != kind) return false;
         if (AlgorithmVersion != VariantAlgorithms.RandomVersion) return false;
+        if (InputFingerprint != Timeline.CompileFingerprint.Create(recipe, kind)) return false;
+        if (assets != null && AssetFingerprint != Timeline.CompileFingerprint.Create(recipe, kind, assets, weaponId)) return false;
+        if (recipe.FireProfile?.Enabled == true) return true;
         if (Entries.Count == 0) return false;
         if (kind == ManifestKind.Burst && (Rpm != recipe.BurstRpm || ShotCount != recipe.BurstShotCount)) return false;
         // 池内容 / 策略变化检测：清单中每层的每次选择仍必须存在于池中且策略指纹一致。
@@ -66,6 +73,7 @@ public enum ManifestKind
 
 public sealed class ManifestEntry
 {
+    public string InstanceId { get; set; } = "";
     public Guid LayerId { get; set; }
 
     /// <summary>0 起的发号；单发恒为 0。</summary>
@@ -73,5 +81,5 @@ public sealed class ManifestEntry
 
     public Guid AssetId { get; set; }
 
-    public ManifestEntry Clone() => new() { LayerId = LayerId, ShotIndex = ShotIndex, AssetId = AssetId };
+    public ManifestEntry Clone() => new() { LayerId = LayerId, ShotIndex = ShotIndex, AssetId = AssetId, InstanceId = InstanceId };
 }

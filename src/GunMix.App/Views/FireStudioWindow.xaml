@@ -1,0 +1,85 @@
+﻿<Window x:Class="GunMix.App.Views.FireStudioWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Title="开火场景与声音定义" Width="1160" Height="820" MinWidth="980" MinHeight="680"
+ Background="{StaticResource WinBg}" WindowStartupLocation="CenterOwner">
+ <Window.Resources>
+  <Style TargetType="TabControl"><Setter Property="Background" Value="{StaticResource PanelBg}"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TabControl"><Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions><TabPanel IsItemsHost="True"/><Border Grid.Row="1" Background="{TemplateBinding Background}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"><ContentPresenter ContentSource="SelectedContent"/></Border></Grid></ControlTemplate></Setter.Value></Setter></Style>
+  <Style TargetType="TabItem"><Setter Property="Foreground" Value="{StaticResource TextPrimary}"/><Setter Property="Background" Value="{StaticResource PanelBg}"/><Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TabItem"><Border x:Name="TabBorder" Background="{TemplateBinding Background}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="14,10" Margin="0,0,4,0"><ContentPresenter ContentSource="Header"/></Border><ControlTemplate.Triggers><Trigger Property="IsSelected" Value="True"><Setter TargetName="TabBorder" Property="Background" Value="{StaticResource AccentDim}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
+ </Window.Resources>
+ <Grid Margin="18">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <StackPanel Margin="0,0,0,12">
+   <TextBlock Text="开火场景与声音定义" FontSize="22" FontWeight="Bold"/>
+   <TextBlock Text="弹药与动作决定事件，事件决定声音实例。以下触发、叠加和上下文规则均为可编辑的项目规则。" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{StaticResource TextSecondary}"/>
+  </StackPanel>
+  <TabControl Grid.Row="1">
+   <TabItem Header="1 · 场景">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="16" MaxWidth="900" HorizontalAlignment="Left">
+     <CheckBox Content="启用事件场景（关闭则保留旧配方混音行为）" IsChecked="{Binding Profile.Enabled}" Margin="0,0,0,14"/>
+     <WrapPanel>
+      <StackPanel Width="200" Margin="0,0,16,10"><TextBlock Text="武器动作模式"/><ComboBox ItemsSource="{Binding Modes}" SelectedItem="{Binding Profile.Mode}"/></StackPanel>
+      <StackPanel Width="160" Margin="0,0,16,10"><TextBlock Text="射速 RPM（6–1800）"/><TextBox Text="{Binding Draft.BurstRpm, ValidatesOnExceptions=True}"/></StackPanel>
+      <StackPanel Width="160" Margin="0,0,16,10"><TextBlock Text="连发尝试数（1–100）"/><TextBox Text="{Binding Draft.BurstShotCount, ValidatesOnExceptions=True}"/></StackPanel>
+      <StackPanel Width="160" Margin="0,0,16,10"><TextBlock Text="初始弹药"/><TextBox Text="{Binding Profile.Ammo, ValidatesOnExceptions=True}"/></StackPanel>
+      <StackPanel Width="160" Margin="0,0,16,10"><TextBlock Text="点射每次发数"/><TextBox Text="{Binding Profile.BurstSize, ValidatesOnExceptions=True}"/></StackPanel>
+      <StackPanel Width="200" Margin="0,0,16,10"><TextBlock Text="释放帧（48k，空=自动）"/><TextBox Text="{Binding Profile.ReleaseFrame, ValidatesOnExceptions=True}"/></StackPanel>
+      <StackPanel Width="200" Margin="0,0,16,10"><TextBlock Text="首次就绪帧（48k）"/><TextBox Text="{Binding Profile.ReadyFrame, ValidatesOnExceptions=True}"/></StackPanel>
+      <StackPanel Width="200" Margin="0,0,16,10"><TextBlock Text="每次动作耗时帧（48k）"/><TextBox Text="{Binding Profile.CycleFrames, ValidatesOnExceptions=True}"/></StackPanel>
+      <StackPanel Width="180" Margin="0,0,16,10"><TextBlock Text="随机种子"/><TextBox Text="{Binding Draft.RandomSeed, ValidatesOnExceptions=True}"/></StackPanel>
+      <StackPanel Width="200" Margin="0,0,16,10"><TextBlock Text="释放后处理"/><ComboBox ItemsSource="{Binding ReleasePolicies}" SelectedItem="{Binding Profile.ReleasePolicy}"/></StackPanel>
+      <StackPanel Width="160" Margin="0,0,16,10"><TextBlock Text="释放淡出 ms"/><TextBox Text="{Binding Profile.FadeMs, ValidatesOnExceptions=True}"/></StackPanel>
+     </WrapPanel>
+     <CheckBox Content="点射松开后完成剩余尝试" IsChecked="{Binding Profile.CompleteBurstOnRelease}" Margin="0,6"/>
+     <WrapPanel Margin="0,8"><CheckBox Content="ADS" IsChecked="{Binding Ads}" Margin="0,0,28,0"/><CheckBox Content="消音（同时应选择消音 bank）" IsChecked="{Binding Suppressed}"/></WrapPanel>
+     <WrapPanel>
+      <StackPanel Width="200" Margin="0,0,16,10"><TextBlock Text="视角（player / npc）"/><TextBox Text="{Binding Perspective}"/></StackPanel>
+      <StackPanel Width="200" Margin="0,0,16,10"><TextBlock Text="环境"/><TextBox Text="{Binding EnvironmentName}"/></StackPanel>
+      <StackPanel Width="200" Margin="0,0,16,10"><TextBlock Text="距离档（手选）"/><TextBox Text="{Binding DistanceName}"/></StackPanel>
+     </WrapPanel>
+     <CheckBox Content="明确允许：无 ADS 文件名候选时，回退到普通成员" IsChecked="{Binding Profile.AllowFilenameContextFallback}" Margin="0,8"/>
+     <TextBlock Text="高级：多次扳机 / 上下文 / 动作就绪事件（JSON 数组；留空使用一次按下/释放）" TextWrapping="Wrap" Margin="0,12,0,5"/>
+     <TextBox x:Name="InputJson" AcceptsReturn="True" Height="100" VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
+     <TextBlock Text="单发导出始终只尝试一次；连发使用本页动作模式。末弹按扣弹前剩余 1 发判断，连发最后一发不自动视作末弹。" TextWrapping="Wrap" Foreground="{StaticResource TextSecondary}" Margin="0,12"/>
+    </StackPanel></ScrollViewer>
+   </TabItem>
+   <TabItem Header="2 · 声音定义">
+    <Grid Margin="12"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="100"/></Grid.RowDefinitions>
+     <DockPanel Margin="0,0,0,8"><Button Content="选择声音根" Click="ChooseRoot" DockPanel.Dock="Right"/><TextBox Text="{Binding SoundsRoot}" ToolTip="bank 中 rex/wpn 相对路径的基准，通常是 sounds 文件夹"/><TextBlock Text="声音根  " VerticalAlignment="Center" DockPanel.Dock="Left"/></DockPanel>
+     <DockPanel Grid.Row="1" Margin="0,0,0,8"><Button x:Name="ImportButton" Content="导入 bank JSON…" Click="ImportBank" DockPanel.Dock="Left" Margin="0,0,10,0"/><Button Content="把选中别名添加为事件层" Click="AddAlias" DockPanel.Dock="Right"/><ComboBox x:Name="BankPicker" DisplayMemberPath="Name" SelectionChanged="BankChanged"/></DockPanel>
+     <DataGrid Grid.Row="2" x:Name="Rows" IsReadOnly="True" AutoGenerateColumns="False" SelectionChanged="RowChanged" CanUserAddRows="False">
+      <DataGrid.Columns><DataGridTextColumn Header="行" Binding="{Binding RowIndex}" Width="50"/><DataGridTextColumn Header="别名" Binding="{Binding Alias}" Width="240"/><DataGridTextColumn Header="候选关联" Binding="{Binding Secondary}" Width="240"/><DataGridCheckBoxColumn Header="ADS候选" Binding="{Binding AdsCandidate}"/><DataGridTextColumn Header="声音引用" Binding="{Binding Snd}" Width="280"/><DataGridTextColumn Header="落地文件（缺失会阻止导出）" Binding="{Binding ResolvedPath, TargetNullValue=缺失}" Width="300"/></DataGrid.Columns>
+     </DataGrid>
+     <TextBox Grid.Row="3" x:Name="RawRow" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Margin="0,8,0,0"/>
+    </Grid>
+   </TabItem>
+   <TabItem Header="3 · 事件映射与关联">
+    <Grid Margin="12"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="150"/></Grid.RowDefinitions>
+     <TextBlock Text="EveryShot=每发；OrdinaryShot=普通发；LastRound=末弹；Release=释放；DryFire=空仓；Prefire=预动作；CycleComplete=动作完成。启用末弹映射会替换 SHOT 角色的普通层。" TextWrapping="Wrap" Margin="0,0,0,10"/>
+     <DataGrid Grid.Row="1" x:Name="Mappings" AutoGenerateColumns="False" CanUserAddRows="False">
+      <DataGrid.Columns>
+       <DataGridCheckBoxColumn Header="启用" Binding="{Binding Enabled}"/>
+       <DataGridTextColumn Header="层名" Binding="{Binding Name}" Width="240"/>
+       <DataGridComboBoxColumn x:Name="TriggerColumn" Header="触发事件" SelectedItemBinding="{Binding FireTrigger}" Width="150"/>
+       <DataGridTextColumn Header="dB" Binding="{Binding GainDb, ValidatesOnExceptions=True}" Width="65"/>
+       <DataGridTextColumn Header="延时ms" Binding="{Binding DelayMs, ValidatesOnExceptions=True}" Width="70"/>
+       <DataGridTextColumn Header="音高比" Binding="{Binding PitchRatio, ValidatesOnExceptions=True}" Width="70"/>
+       <DataGridTextColumn Header="别名 / 素材池" Binding="{Binding AliasId}" Width="280" IsReadOnly="True"/>
+      </DataGrid.Columns>
+     </DataGrid>
+     <WrapPanel Grid.Row="2" Margin="0,12,0,8"><Button Content="删除选中映射层" Click="RemoveLayer"/><Button Content="从已导入 bank 添加全部候选关联（默认关闭）" Click="AddRelations" Margin="10,0,0,0"/><TextBlock Text=" 关联执行规则：项目设定，原版 alias2 语义未完全确认" VerticalAlignment="Center" TextWrapping="Wrap"/></WrapPanel>
+     <DataGrid Grid.Row="3" x:Name="Relations" AutoGenerateColumns="False" CanUserAddRows="False"><DataGrid.Columns><DataGridCheckBoxColumn Header="执行" Binding="{Binding Enabled}"/><DataGridTextColumn Header="来源别名" Binding="{Binding FromAlias}" Width="240" IsReadOnly="True"/><DataGridTextColumn Header="目标别名" Binding="{Binding ToAlias}" Width="240" IsReadOnly="True"/><DataGridTextColumn Header="延时ms" Binding="{Binding DelayMs, ValidatesOnExceptions=True}" Width="80"/><DataGridTextColumn Header="目标dB" Binding="{Binding GainDb, ValidatesOnExceptions=True}" Width="80"/></DataGrid.Columns></DataGrid>
+    </Grid>
+   </TabItem>
+   <TabItem Header="4 · 事件、实例与证据">
+    <Grid Margin="12"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="*"/><RowDefinition Height="110"/></Grid.RowDefinitions>
+     <WrapPanel Margin="0,0,0,8"><Button Content="编译单发" Click="PreviewSingle"/><Button Content="编译连发" Click="PreviewBurst" Margin="10,0,0,0"/><TextBlock x:Name="Summary" Margin="14,0,0,0" VerticalAlignment="Center"/></WrapPanel>
+     <DataGrid Grid.Row="1" x:Name="DomainEvents" IsReadOnly="True" CanUserAddRows="False" AutoGenerateColumns="False"><DataGrid.Columns><DataGridTextColumn Header="事件" Binding="{Binding Id}" Width="100"/><DataGridTextColumn Header="类型" Binding="{Binding Kind}" Width="160"/><DataGridTextColumn Header="帧" Binding="{Binding Frame}" Width="90"/><DataGridTextColumn Header="弹药之前" Binding="{Binding AmmoBefore}" Width="90"/><DataGridCheckBoxColumn Header="末弹" Binding="{Binding LastRound}" Width="70"/><DataGridCheckBoxColumn Header="ADS" Binding="{Binding Context.Ads}" Width="70"/></DataGrid.Columns></DataGrid>
+     <DataGrid Grid.Row="2" x:Name="Instances" IsReadOnly="True" CanUserAddRows="False" AutoGenerateColumns="False" Margin="0,10,0,0"><DataGrid.Columns><DataGridTextColumn Header="起点帧" Binding="{Binding StartSample}" Width="80"/><DataGridTextColumn Header="触发" Binding="{Binding TriggerEventId}" Width="100"/><DataGridTextColumn Header="别名" Binding="{Binding AliasId}" Width="240"/><DataGridTextColumn Header="选择原因" Binding="{Binding SelectionReason}" Width="240"/><DataGridTextColumn Header="实例" Binding="{Binding InstanceId}" Width="240"/></DataGrid.Columns></DataGrid>
+     <TextBox Grid.Row="3" x:Name="EvidenceText" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Margin="0,10,0,0"/>
+    </Grid>
+   </TabItem>
+  </TabControl>
+  <TextBlock Grid.Row="2" x:Name="Feedback" TextWrapping="Wrap" Margin="0,10,0,8" Foreground="{StaticResource TextSecondary}"/>
+  <DockPanel Grid.Row="3"><Button Content="取消" IsCancel="True" DockPanel.Dock="Right" MinWidth="90"/><Button Content="应用到当前配方" Click="Apply" DockPanel.Dock="Right" Margin="0,0,10,0" MinWidth="160" Style="{StaticResource AccentButton}"/><TextBlock Text="应用后，在主窗口分别试听和导出单发 / 连发；设置和原始定义随工程保存。" TextWrapping="Wrap" VerticalAlignment="Center"/></DockPanel>
+ </Grid>
+</Window>
