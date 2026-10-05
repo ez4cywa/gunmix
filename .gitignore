@@ -2,7 +2,9 @@
 bin/
 obj/
 publish/
+publish-*/
 dist/
+*.7z
 
 # 本地素材与工程（绝不入库）
 *.wav
