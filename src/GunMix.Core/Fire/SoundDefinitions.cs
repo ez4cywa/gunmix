@@ -14,7 +14,9 @@ public static class EvidenceLedger
         new("ads", "partial", "条件选择机制与混合 ADS 文件名容器存在", "真实 context 字段与成员对应"),
         new("release", "unknown", "interrupt 记录存在", "TriggerUp 到别名的分支"),
         new("fcg", "unknown", "FCG 记录存在", "每个 FCG 动作的独立触发条件"),
-        new("numeric", "unknown", "简化导出缺失增益/音高/权重/循环字段", "本构建序列化定义与运行字段解码") ];
+        new("numeric", "unknown", "简化导出缺失增益/音高/权重/循环字段", "本构建序列化定义与运行字段解码"),
+        new("shared-atmo", "confirmed", "mike4 NPC bank 静态引用 32 个公共 AR 环境声候选文件", "每个成员的实际触发条件仍待绑定，当前 WAV 缺失"),
+        new("atmo-submission", "partial", "环境别名非零返回值写入独立播放记录并提交；零返回跳过", "运行字段与 bank 逐成员映射、距离阈值") ];
     public const string BuildSha256="e73eed58873bab808641de6eaf216bb35c87e45b5462a92efe87460650dd8d74";
 }
 public sealed class SoundDefinitionRow

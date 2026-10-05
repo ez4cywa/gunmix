@@ -44,13 +44,14 @@ public static class FirePlanCompiler
                     Add(asset,start,layer.GainDb,null,null,null,"项目素材池变体",null);
                 else issues.Add(new(layer.Name,$"{e.Id}：素材池为空或素材缺失"));
 
-                void Add(AssetInfo asset,long frame,double gain,string? parent,string? bank,string? aliasId,string reason,int? row)
+                void Add(AssetInfo asset,long frame,double gain,string? parent,string? bank,string? aliasId,string reason,int? row,string? soundReference=null)
                 {
                     if(budget--<=0){issues.Add(new(layer.Name,$"{command}：实例预算 {profile.MaxInstances} 已耗尽"));return;}
                     var id=$"{command}:instance-{profile.MaxInstances-budget}";
                     instances.Add(new(){LayerId=layer.Id,AssetId=asset.Id,ShotIndex=e.ShotIndex,StartSample=frame,GainDb=gain,PitchRatio=layer.PitchRatio,
                         InstanceId=id,ParentInstanceId=parent,TriggerEventId=e.Id,CommandId=command,BankKey=bank,AliasId=aliasId,RowIndex=row,
-                        ContextSnapshot=e.Context,SourceHash=asset.Sha256,RuleOrigin="projectAuthored",SelectionReason=reason});
+                        ContextSnapshot=e.Context,SourceHash=asset.Sha256,RuleOrigin="projectAuthored",SelectionReason=reason,
+                        SoundReference=soundReference,AssetOwnerWeaponId=asset.WeaponId});
                 }
                 void Visit(SoundDefinitionBank bank,string aliasId,long frame,double gain,string? parent,HashSet<string> path,int depth)
                 {
@@ -67,12 +68,21 @@ public static class FirePlanCompiler
                         {issues.Add(new(layer.Name,$"{aliasId}：无 ADS 候选；请明确允许普通素材回退"));return;}
                         random^=random<<13;random^=random>>17;random^=random<<5;
                         var chosen=candidates[layer.VariantMode==VariantMode.Random?(int)(random%(uint)candidates.Count):layer.VariantMode==VariantMode.Rotation?n%candidates.Count:0];
-                        var asset=assets.FirstOrDefault(a=>a.WeaponId==weaponId&&chosen.SourceHash!=null&&a.Sha256==chosen.SourceHash);
+                        if(depth==0 && layer.VariantMode==VariantMode.Fixed && layer.FixedAssetId is { } fixedId)
+                        {
+                            var fixedRow=candidates.FirstOrDefault(r=>byId.TryGetValue(fixedId,out var fixedAsset)&&
+                                !string.IsNullOrEmpty(r.SourceHash)&&string.Equals(r.SourceHash,fixedAsset.Sha256,StringComparison.OrdinalIgnoreCase));
+                            if(fixedRow==null){issues.Add(new(layer.Name,$"{aliasId}：固定样本不属于当前 bank / 上下文候选"));return;}
+                            chosen=fixedRow;
+                        }
+                        var asset=BankAssetBinding.Resolve(chosen,assets,weaponId);
+                        if(depth==0 && layer.VariantMode==VariantMode.Fixed && layer.FixedAssetId is { } selectedId)
+                            asset=byId[selectedId];
                         string? currentParent=parent;
                         if(asset==null)issues.Add(new(layer.Name,$"{aliasId} 行 {chosen.RowIndex}：素材未导入或缺失 {chosen.Snd}"));
                         else
                         {
-                            Add(asset,frame,gain,parent,bank.BankKey,aliasId,mixed?"项目文件名上下文候选 + 变体":"项目变体 / 已允许的上下文回退",chosen.RowIndex);
+                            Add(asset,frame,gain,parent,bank.BankKey,aliasId,mixed?"项目文件名上下文候选 + 变体":"项目变体 / 已允许的上下文回退",chosen.RowIndex,chosen.Snd);
                             currentParent=instances[^1].InstanceId;
                         }
                         if(chosen.Secondary is not {Length:>0} secondary)return;

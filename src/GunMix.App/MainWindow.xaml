@@ -2,9 +2,10 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ctl="clr-namespace:GunMix.App.Controls"
-        Title="枪声分层工作台" Width="1440" Height="900" MinWidth="1280" MinHeight="720"
+        Title="枪声分层工作台" Width="1440" Height="900" MinWidth="1080" MinHeight="680"
+        UseLayoutRounding="True" SnapsToDevicePixels="True"
         Background="{StaticResource WinBg}" WindowStartupLocation="CenterScreen"
-        PreviewKeyDown="OnPreviewKeyDown" Closing="OnClosing">
+        PreviewKeyDown="OnPreviewKeyDown" Closing="OnClosing" SizeChanged="OnWorkspaceSizeChanged">
 
     <Window.Resources>
         <ctl:StringToBrushConverter x:Key="StringToBrush"/>
@@ -18,43 +19,47 @@
         <KeyBinding Modifiers="Control" Key="Y" Command="{Binding RedoCommand}"/>
     </Window.InputBindings>
 
-    <Grid Margin="8,4">
+    <Grid Margin="14,10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="44"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="46"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- ═══ 顶部 ═══ -->
-        <Grid Grid.Row="0" Margin="0,0,0,6">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Text="枪声分层工作台" FontSize="18" FontWeight="Bold" VerticalAlignment="Center"/>
-                <TextBlock Text="{Binding ProjectInfo}" FontSize="13" Margin="24,0,0,0" VerticalAlignment="Center"
-                           Foreground="{StaticResource TextSecondary}"/>
+        <!-- 文件操作与制作入口分开，标题始终留有空间。 -->
+        <Grid Grid.Row="0" Margin="0,0,0,12">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="枪声分层工作台" FontSize="22" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding ProjectInfo}" Foreground="{StaticResource TextSecondary}"
+                           TextTrimming="CharacterEllipsis" ToolTip="{Binding ProjectInfo}" Margin="0,4,12,0"/>
             </StackPanel>
-            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                <Button Content="导入文件夹" Command="{Binding ImportCommand}" MinWidth="96"/>
-                <Button Content="打开工程" Command="{Binding OpenCommand}" MinWidth="84" Margin="8,0,0,0"/>
-                <Button Content="保存" Command="{Binding SaveCommand}" MinWidth="70" Margin="8,0,0,0"/>
-                <Button Content="动画音效…" MinWidth="92" Margin="8,0,0,0" Click="OnOpenAnimation"
-                        ToolTip="读取 .cast 的音频通知，把装弹、检视、举枪等动画装配成完整音效并导出"/>
-                <Button Content="开火场景…" Margin="8,0,0,0" Click="OnOpenFireStudio" ToolTip="弹药、末弹、动作、bank 定义与条件事件映射"/>
-                <Button Content="导出单发 / 连发" Command="{Binding ExportCommand}" MinWidth="120" Margin="8,0,0,0"
-                        Style="{StaticResource AccentButton}"/>
-            </StackPanel>
+            <WrapPanel Grid.Column="1" VerticalAlignment="Center">
+                <Button Content="打开工程" Command="{Binding OpenCommand}" Margin="0,0,8,0" ToolTip="Ctrl+O"/>
+                <Button Content="保存工程" Command="{Binding SaveCommand}" Margin="0,0,8,0" ToolTip="Ctrl+S"/>
+                <Button Content="导出单发 / 连发" Command="{Binding ExportCommand}" Style="{StaticResource AccentButton}" ToolTip="Ctrl+E"/>
+            </WrapPanel>
+            <Border Grid.Row="1" Grid.ColumnSpan="2" Background="{StaticResource PanelBg}" CornerRadius="4" Padding="10,8" Margin="0,12,0,0">
+                <DockPanel LastChildFill="True">
+                    <WrapPanel DockPanel.Dock="Right">
+                        <Button Content="动画音效" Click="OnOpenAnimation" IsEnabled="{Binding ProjectLoaded}" Margin="0,0,8,0"/>
+                        <ToggleButton x:Name="InspectorToggle" Content="层设置" Style="{StaticResource ToggleButton}"
+                                      IsEnabled="{Binding ProjectLoaded}" Checked="OnInspectorToggle" Unchecked="OnInspectorToggle"
+                                      AutomationProperties.Name="显示或隐藏层设置" ToolTip="选中一层后编辑样本、增益和高级规则"/>
+                    </WrapPanel>
+                    <TextBlock Text="1  选择武器与素材     →     2  调整分层与序列     →     3  试听并导出"
+                               VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,16,0"/>
+                </DockPanel>
+            </Border>
         </Grid>
 
         <!-- ═══ 主区 ═══ -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="250"/>
+                <ColumnDefinition Width="240"/>
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="290"/>
+                <ColumnDefinition x:Name="InspectorColumn" Width="0"/>
             </Grid.ColumnDefinitions>
 
             <!-- 空工程状态：唯一主入口，不展示假波形或假电平 -->
@@ -78,7 +83,8 @@
 
             <!-- ── 左：武器与素材库 ── -->
             <Border Grid.Column="0" Background="{StaticResource PanelBg}" BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="1" CornerRadius="4" Margin="0,0,6,0">
+                    BorderThickness="1" CornerRadius="4" Margin="0,0,10,0"
+                    Visibility="{Binding ProjectLoaded, Converter={StaticResource BoolToVis}}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <Grid Margin="8">
                     <Grid.RowDefinitions>
@@ -93,12 +99,15 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="武器 / 素材库" Style="{StaticResource SectionHeader}"/>
-                        <Button Grid.Column="1" Content="＋武器" FontSize="11" MinHeight="22" Padding="6,1"
+                        <TextBlock Text="1  武器与素材" Style="{StaticResource SectionHeader}"/>
+                        <Button Grid.Column="1" Content="添加" FontSize="13" MinHeight="30" Padding="8,3"
                                 Command="{Binding AddWeaponCommand}" ToolTip="添加一把武器（每把武器独立素材、配方与导出）"/>
                     </Grid>
-                    <TextBox Grid.Row="1" Text="{Binding AssetSearch, UpdateSourceTrigger=PropertyChanged}"
-                             ToolTip="搜索当前武器的分组或文件名"/>
+                    <StackPanel Grid.Row="1" Margin="0,6,0,0">
+                        <TextBlock Text="搜索素材 / 分组" Style="{StaticResource HintText}" Margin="0,0,0,4"/>
+                        <TextBox AutomationProperties.Name="搜索素材分组或文件名" Text="{Binding AssetSearch, UpdateSourceTrigger=PropertyChanged}"
+                                 ToolTip="搜索当前武器的分组或文件名"/>
+                    </StackPanel>
                     <StackPanel Grid.Row="2" Margin="0,8,0,4">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -106,11 +115,12 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <ComboBox ItemsSource="{Binding Weapons}" SelectedItem="{Binding SelectedWeapon}"
-                                      DisplayMemberPath="Display" ToolTip="切换武器（不沿用上一把枪的样本池、射速或导出名称）"/>
-                            <Button Grid.Column="1" Content="✎" FontSize="11" MinHeight="26" MinWidth="26" Margin="6,0,0,0"
+                                      AutomationProperties.Name="当前武器" DisplayMemberPath="Display" ToolTip="切换武器（不沿用上一把枪的样本池、射速或导出名称）"/>
+                            <Button Grid.Column="1" Content="改名" FontSize="13" MinHeight="32" MinWidth="48" Margin="6,0,0,0"
                                     Command="{Binding RenameWeaponCommand}" ToolTip="重命名当前武器"/>
                         </Grid>
                         <!-- 枪型合成模板：键值对照，设计依据折叠；数值为试混建议 -->
+                        <Expander Header="枪型模板与响度配平" Margin="0,10,0,0">
                         <Border Background="{StaticResource PanelBgLight}" BorderBrush="{StaticResource BorderBrush}"
                                 BorderThickness="1" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
                             <StackPanel>
@@ -145,22 +155,23 @@
                                                FontFamily="Consolas, Microsoft YaHei UI" ToolTip="主体层前 250 ms RMS 的目标电平；各层增益由此与素材实测响度反推"/>
                                     <TextBlock Grid.Row="3" Text="层相对主体" Style="{StaticResource FieldLabel}" VerticalAlignment="Top"/>
                                     <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding CurrentProfile.LayerTargetsLabel}" Style="{StaticResource FieldValue}"
-                                               FontFamily="Consolas, Microsoft YaHei UI" FontSize="11"/>
+                                               FontFamily="Consolas, Microsoft YaHei UI" FontSize="13"/>
                                     <TextBlock Grid.Row="4" Text="连发实例" Style="{StaticResource FieldLabel}"/>
                                     <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding CurrentProfile.VoiceLimitLabel}" Style="{StaticResource FieldValue}"/>
                                 </Grid>
-                                <Expander Header="模板依据" Margin="0,4,0,0" Foreground="{StaticResource TextSecondary}" FontSize="11">
+                                <Expander Header="模板依据" Margin="0,4,0,0" Foreground="{StaticResource TextSecondary}" FontSize="13">
                                     <TextBlock Text="{Binding CurrentProfile.Notes}" Style="{StaticResource HintText}" TextWrapping="Wrap"
                                                Margin="0,2,0,0" LineHeight="17"/>
                                 </Expander>
-                                <UniformGrid Columns="2" Margin="0,6,0,0">
-                                    <Button Content="按枪型生成配方" Command="{Binding RegenerateAdaptiveCommand}" FontSize="12" Margin="0,0,3,0"
+                                <StackPanel Margin="0,6,0,0">
+                                    <Button Content="按枪型生成配方" Command="{Binding RegenerateAdaptiveCommand}" FontSize="13" Margin="0,0,3,0"
                                             ToolTip="按枪型模板和素材实测响度，为普通 / ADS / 消音 / NPC 距离生成“自适应·”配方；只替换旧的自适应配方"/>
-                                    <Button Content="响度配平" Command="{Binding RebalanceCommand}" FontSize="12" Margin="3,0,0,0"
+                                    <Button Content="响度配平" Command="{Binding RebalanceCommand}" FontSize="13" Margin="0,6,0,0"
                                             ToolTip="按枪型的层间响度目标重算当前配方各层增益（保留开关、延时和素材池），并做峰值保护"/>
-                                </UniformGrid>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
+                        </Expander>
                     </StackPanel>
                     <TreeView Grid.Row="3" ItemsSource="{Binding AssetTree}" VirtualizingPanel.IsVirtualizing="False"
                               AllowDrop="False" ToolTip="双击文件试听（直接文件预听与配方播放互斥）；右键把分组指定到选中层">
@@ -183,7 +194,7 @@
                                         </TextBlock.Style>
                                     </TextBlock>
                                     <TextBlock Grid.Column="1" Text="{Binding Detail}" Foreground="{StaticResource TextSecondary}"
-                                               FontSize="11" Margin="8,0,0,0"/>
+                                               FontSize="13" Margin="8,0,0,0"/>
                                 </Grid>
                             </HierarchicalDataTemplate>
                         </TreeView.ItemTemplate>
@@ -195,7 +206,14 @@
                             </Style>
                         </TreeView.ItemContainerStyle>
                     </TreeView>
-                    <StackPanel Grid.Row="4" Margin="0,6,0,0">
+                    <StackPanel Grid.Row="4" Margin="0,10,0,0">
+                        <Button Content="导入音频文件夹" Command="{Binding ImportCommand}" Margin="0,0,0,8"/>
+                        <Expander Header="工程选项" Margin="0,0,0,8">
+                            <StackPanel Margin="0,8,0,0">
+                                <Button Content="另存为…" Command="{Binding SaveAsCommand}" Margin="0,0,0,6"/>
+                                <Button Content="重命名工程" Command="{Binding RenameProjectCommand}"/>
+                            </StackPanel>
+                        </Expander>
                         <TextBlock Text="分组来源：文件名（手动分组优先）" Style="{StaticResource HintText}"/>
                         <TextBlock Text="last / interrupt / fcg 为实验分支，默认不启用；原版事件条件未确认" Style="{StaticResource WarnText}" TextWrapping="Wrap"/>
                     </StackPanel>
@@ -204,7 +222,10 @@
             </Border>
 
             <!-- ── 中：混音区 + 序列 ── -->
-            <Grid Grid.Column="1" Margin="0,0,6,0">
+            <ScrollViewer x:Name="MixerScroll" Grid.Column="1" Margin="0,0,8,0"
+                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          Visibility="{Binding ProjectLoaded, Converter={StaticResource BoolToVis}}">
+            <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
@@ -217,6 +238,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -225,14 +247,14 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="当前配方" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="Bold"/>
+                    <TextBlock Text="2  混音配方" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="Bold"/>
                     <ComboBox Grid.Column="1" ItemsSource="{Binding Recipes}" SelectedItem="{Binding SelectedRecipe}"
-                              DisplayMemberPath="Display" MaxWidth="360" HorizontalAlignment="Left" MinWidth="220"/>
+                              AutomationProperties.Name="当前混音配方" DisplayMemberPath="Display" HorizontalAlignment="Stretch" MinWidth="140"/>
                     <Button Grid.Column="2" Content="重命名" Margin="8,0,0,0" Command="{Binding RenameRecipeCommand}"/>
-                    <Button Grid.Column="3" Content="复制为新配方" Margin="8,0,0,0" Command="{Binding CopyRecipeCommand}"
+                    <Button Grid.Column="3" Content="复制配方" Margin="6,0,0,0" Command="{Binding CopyRecipeCommand}"
                             ToolTip="ADS、消音与 NPC 版本建议通过复制建立；缺素材时显示“待指定”，不偷偷借用普通版"/>
-                    <TextBlock Grid.Column="4" Text="教学预设 · 可编辑" Foreground="{StaticResource WarnYellow}" FontSize="12"
-                               VerticalAlignment="Center" Margin="10,0,0,0">
+                    <TextBlock Grid.Row="2" Grid.ColumnSpan="5" Text="教学预设 · 可编辑" Foreground="{StaticResource WarnYellow}" FontSize="13"
+                               VerticalAlignment="Center" Margin="0,6,0,0">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                 <Setter Property="Visibility" Value="Collapsed"/>
@@ -248,173 +270,117 @@
                               Foreground="{StaticResource TextSecondary}"
                               Visibility="{Binding HasRecipeNotes, Converter={StaticResource BoolToVis}}">
                         <TextBox Text="{Binding RecipeNotes, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="120"
-                                 VerticalScrollBarVisibility="Auto" Background="#1B2128" FontSize="12"/>
+                                 VerticalScrollBarVisibility="Auto" Background="#1B2128" FontSize="13"/>
                     </Expander>
                 </Grid>
 
-                <!-- 表头 -->
-                <Border Grid.Row="1" Background="{StaticResource PanelBgLight}" CornerRadius="3" Padding="8,4">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="40" SharedSizeGroup="c0"/>
-                            <ColumnDefinition Width="160" SharedSizeGroup="c1"/>
-                            <ColumnDefinition Width="28" SharedSizeGroup="c2"/>
-                            <ColumnDefinition Width="1.2*" SharedSizeGroup="c3"/>
-                            <ColumnDefinition Width="1.3*" SharedSizeGroup="c4"/>
-                            <ColumnDefinition Width="1.1*" SharedSizeGroup="c5"/>
-                            <ColumnDefinition Width="1.6*" SharedSizeGroup="c6"/>
-                            <ColumnDefinition Width="30" SharedSizeGroup="c7"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="层/开关" FontSize="11" Foreground="{StaticResource TextSecondary}"/>
-                        <TextBlock Grid.Column="1" Text="名称" FontSize="11" Foreground="{StaticResource TextSecondary}"/>
-                        <TextBlock Grid.Column="2" Text="S" FontSize="11" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" ToolTip="独听（仅影响监听）"/>
-                        <TextBlock Grid.Column="3" Text="素材池 / 当前变体" FontSize="11" Foreground="{StaticResource TextSecondary}"/>
-                        <TextBlock Grid.Column="4" Text="增益 dB (-60 ～ +6)" FontSize="11" Foreground="{StaticResource TextSecondary}"/>
-                        <TextBlock Grid.Column="5" Text="延时 ms (0 ～ 1000)" FontSize="11" Foreground="{StaticResource TextSecondary}"/>
-                        <TextBlock Grid.Column="6" Text="波形示意" FontSize="11" Foreground="{StaticResource TextSecondary}"/>
-                    </Grid>
-                </Border>
-
-                <!-- 层列表 -->
-                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="0,4,0,0">
-                    <ItemsControl ItemsSource="{Binding Layers}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border x:Name="row" BorderBrush="{StaticResource BorderBrush}"
-                                        BorderThickness="1" CornerRadius="3" Margin="0,0,0,4" Padding="6,4" Cursor="Hand"
-                                        MouseLeftButtonDown="OnLayerRowMouseDown"
-                                        ContextMenuOpening="OnLayerContextMenu">
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Setter Property="Background" Value="{StaticResource RowBg}"/>
-                                            <Style.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter Property="Background" Value="{StaticResource RowBgHover}"/>
-                                                </Trigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Border.Style>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="40"/>
-                                            <ColumnDefinition Width="160"/>
-                                            <ColumnDefinition Width="28"/>
-                                            <ColumnDefinition Width="1.2*" MinWidth="120"/>
-                                            <ColumnDefinition Width="1.3*" MinWidth="150"/>
-                                            <ColumnDefinition Width="1.1*" MinWidth="130"/>
-                                            <ColumnDefinition Width="1.6*" MinWidth="110"/>
-                                            <ColumnDefinition Width="30"/>
-                                        </Grid.ColumnDefinitions>
-                                        <CheckBox IsChecked="{Binding Enabled}" VerticalAlignment="Center" ToolTip="开关（关闭本层）"/>
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,6,0">
-                                            <TextBlock Text="{Binding Name}" FontWeight="Bold" TextTrimming="CharacterEllipsis"
-                                                       ToolTip="{Binding Name}"/>
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding Role}" FontSize="11" Foreground="{StaticResource TextSecondary}"/>
-                                                <Border Style="{StaticResource WarnTag}"
-                                                        Visibility="{Binding IsExperimental, Converter={StaticResource BoolToVis}}"
-                                                        ToolTip="实验层：触发条件为用户设定，原版条件未确认">
-                                                    <TextBlock Text="实验" FontSize="10" Foreground="{StaticResource WarnYellow}"/>
-                                                </Border>
-                                            </StackPanel>
+                <DockPanel Grid.Row="1" Margin="0,4,0,8">
+                    <Button DockPanel.Dock="Right" Content="添加层" Command="{Binding AddLayerCommand}"/>
+                    <TextBlock Text="启用需要的层，直接输入增益与延时；‘设置’中选择素材。" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,12,0"/>
+                </DockPanel>
+                <ListBox x:Name="LayerList" Grid.Row="2" ItemsSource="{Binding Layers}" SelectedItem="{Binding SelectedLayer}"
+                         MaxHeight="280" AutomationProperties.Name="混音分层列表" Background="Transparent" BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="False" HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            <Setter Property="Padding" Value="0"/>
+                            <Setter Property="Margin" Value="0,0,0,8"/>
+                            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}"/>
+                            <Setter Property="AutomationProperties.Name" Value="{Binding Name}"/>
+                            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem">
+                                <ContentPresenter/>
+                            </ControlTemplate></Setter.Value></Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border x:Name="row" Background="{StaticResource RowBg}" BorderBrush="{StaticResource BorderLight}"
+                                    BorderThickness="1" CornerRadius="5" Padding="10" MouseLeftButtonDown="OnLayerRowMouseDown"
+                                    ContextMenuOpening="OnLayerContextMenu">
+                                <Grid>
+                                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <WrapPanel Margin="0,0,8,0">
+                                    <CheckBox IsChecked="{Binding Enabled}" Width="112" VerticalAlignment="Center" Margin="0,0,12,6" AutomationProperties.Name="{Binding Name, StringFormat=启用层：{0}}">
+                                        <TextBlock Text="{Binding Name}" MaxWidth="80" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
+                                    </CheckBox>
+                                    <ToggleButton Content="独听" IsChecked="{Binding Solo}" Style="{StaticResource ToggleButton}" Margin="0,0,12,6"
+                                                  AutomationProperties.Name="{Binding Name, StringFormat=独听层：{0}}" ToolTip="只影响监听，可独听多层；不改变导出内容"/>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,6">
+                                        <TextBlock Text="增益 dB" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <TextBox Width="80" Style="{StaticResource NumericBox}" Text="{Binding GainDb, UpdateSourceTrigger=LostFocus, StringFormat={}{0:0.0}}"
+                                                 AutomationProperties.Name="{Binding Name, StringFormat=层增益 dB：{0}}" ToolTip="-60 ～ +6 dB；离开输入框生效"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,6">
+                                        <TextBlock Text="延时 ms" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <TextBox Width="80" Style="{StaticResource NumericBox}" Text="{Binding DelayMs, UpdateSourceTrigger=LostFocus, StringFormat={}{0:0.0}}"
+                                                 AutomationProperties.Name="{Binding Name, StringFormat=层延时 ms：{0}}" ToolTip="0 ～ 1000 ms"/>
+                                    </StackPanel>
+                                    <Button Content="试听" Click="OnPlayLayerClick" Margin="0,0,0,6"
+                                            AutomationProperties.Name="{Binding Name, StringFormat=试听层：{0}}"/>
+                                    </WrapPanel>
+                                    <Button Grid.Column="1" Content="设置" VerticalAlignment="Top" Click="OnLayerSettingsClick" AutomationProperties.Name="{Binding Name, StringFormat=编辑层设置：{0}}"/>
+                                    <Grid Grid.Row="1" Grid.ColumnSpan="2" Margin="0,8,10,0">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="130"/></Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,12,0">
+                                            <TextBlock Text="{Binding PoolDisplay}" TextTrimming="CharacterEllipsis" ToolTip="{Binding PoolDisplay}"/>
+                                            <TextBlock Text="{Binding CurrentVariant}" Foreground="{StaticResource AccentText}" TextTrimming="CharacterEllipsis" ToolTip="{Binding CurrentVariant}" Margin="0,3,0,0"/>
                                         </StackPanel>
-                                        <ToggleButton Grid.Column="2" Content="S" FontSize="11" Padding="2,1" MinWidth="22" MinHeight="22"
-                                                      Style="{StaticResource ToggleButton}"
-                                                      IsChecked="{Binding Solo}" VerticalAlignment="Center"
-                                                      ToolTip="独听：只试听选中的独听层，多个 Solo 可共存；独听不改变导出层"/>
-                                        <StackPanel Grid.Column="3" VerticalAlignment="Center" Margin="0,0,8,0">
-                                            <TextBlock Text="{Binding PoolDisplay}" FontSize="12" TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock Text="{Binding CurrentVariant}" FontSize="11" Foreground="{StaticResource AccentText}"
-                                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding CurrentVariant}"/>
-                                        </StackPanel>
-                                        <Grid Grid.Column="4" VerticalAlignment="Center" Margin="0,0,8,0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="70"/>
-                                            </Grid.ColumnDefinitions>
-                                            <Slider Minimum="-60" Maximum="6" Value="{Binding GainDb}"
-                                                    SmallChange="0.5" LargeChange="3" VerticalAlignment="Center"
-                                                    ToolTip="拖动或右侧输入（-60 ～ +6 dB）"/>
-                                            <TextBox Grid.Column="1" Style="{StaticResource NumericBox}"
-                                                     Text="{Binding GainDb, UpdateSourceTrigger=LostFocus, StringFormat={}{0:0.0}}"/>
-                                        </Grid>
-                                        <Grid Grid.Column="5" VerticalAlignment="Center" Margin="0,0,8,0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="70"/>
-                                            </Grid.ColumnDefinitions>
-                                            <Slider Minimum="0" Maximum="1000" Value="{Binding DelayMs}"
-                                                    SmallChange="0.1" LargeChange="10" VerticalAlignment="Center"
-                                                    ToolTip="拖动或右侧输入（0 ～ 1000 ms，支持 0.1 ms）"/>
-                                            <TextBox Grid.Column="1" Style="{StaticResource NumericBox}"
-                                                     Text="{Binding DelayMs, UpdateSourceTrigger=LostFocus, StringFormat={}{0:0.0}}"/>
-                                        </Grid>
-                                        <Border Grid.Column="6" Background="{StaticResource InputBg}" CornerRadius="2" ClipToBounds="True" MinWidth="100">
-                                            <ctl:WaveformView Peaks="{Binding Peaks}" Height="40" VerticalAlignment="Stretch"/>
+                                        <Border Grid.Column="1" Background="{StaticResource InputBg}" CornerRadius="3" ClipToBounds="True">
+                                            <ctl:WaveformView Peaks="{Binding Peaks}" Height="36"/>
                                         </Border>
-                                        <Button Grid.Column="7" Content="▶" FontSize="10" MinWidth="22" MinHeight="22" VerticalAlignment="Center"
-                                                Click="OnPlayLayerClick" ToolTip="单层试听"/>
                                     </Grid>
-                                </Border>
-                                <DataTemplate.Triggers>
-                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                        <Setter TargetName="row" Property="Background" Value="{StaticResource RowBgSelected}"/>
-                                        <Setter TargetName="row" Property="BorderBrush" Value="{StaticResource Accent}"/>
-                                    </DataTrigger>
-                                    <!-- 关闭的层整行减淡：不参与导出，一眼可辨 -->
-                                    <DataTrigger Binding="{Binding Enabled}" Value="False">
-                                        <Setter TargetName="row" Property="Opacity" Value="0.55"/>
-                                    </DataTrigger>
-                                </DataTemplate.Triggers>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+
+                                </Grid>
+                            </Border>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                    <Setter TargetName="row" Property="Background" Value="{StaticResource RowBgSelected}"/>
+                                    <Setter TargetName="row" Property="BorderBrush" Value="{StaticResource Accent}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Enabled}" Value="False"><Setter TargetName="row" Property="Background" Value="{StaticResource PanelBg}"/></DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
 
                 <!-- 序列 -->
                 <Border Grid.Row="3" Background="{StaticResource PanelBg}" BorderBrush="{StaticResource BorderBrush}"
                         BorderThickness="1" CornerRadius="4" Padding="10,8" Margin="0,6,0,0">
                     <StackPanel>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="序列" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                            <ToggleButton Grid.Column="1" Content="单发" IsChecked="{Binding SingleMode}" Style="{StaticResource ToggleButton}"/>
-                            <ToggleButton Grid.Column="2" Content="连发" IsChecked="{Binding BurstMode}" Style="{StaticResource ToggleButton}" Margin="6,0,0,0"/>
-                            <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="24,0,0,0">
+                        <TextBlock Text="3  序列试听" Style="{StaticResource SectionHeader}"/>
+                        <WrapPanel>
+                            <ToggleButton Content="单发" IsChecked="{Binding SingleMode}" Style="{StaticResource ToggleButton}" Margin="0,0,6,8"/>
+                            <ToggleButton Content="连发" IsChecked="{Binding BurstMode}" Style="{StaticResource ToggleButton}" Margin="0,0,16,8"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,16,8">
                                 <TextBlock Text="射速 RPM" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                <TextBox Text="{Binding BurstRpm, UpdateSourceTrigger=LostFocus}" Width="64" IsEnabled="{Binding BurstMode}"
-                                         Style="{StaticResource NumericBox}" ToolTip="6 – 1800 RPM"/>
-                                <TextBlock Text="发数" VerticalAlignment="Center" Margin="12,0,6,0"/>
-                                <TextBox Text="{Binding BurstShotCount, UpdateSourceTrigger=LostFocus}" Width="54" IsEnabled="{Binding BurstMode}"
-                                         Style="{StaticResource NumericBox}" ToolTip="1 – 100 发"/>
-                                <CheckBox Content="松扳机尾音" IsChecked="{Binding ReleaseTailEnabled}" VerticalAlignment="Center"
-                                          Margin="12,0,0,0" IsEnabled="{Binding ReleaseTailAvailable}"
-                                          ToolTip="连发末发起点 + 一个射击间隔处触发一次 *_plr_interrupt（松开扳机的尾声）；只进入连发导出，单发不受影响。原版触发条件未确认。"/>
-                                <TextBlock Text="固定种子" VerticalAlignment="Center" Margin="12,0,6,0"/>
-                                <TextBox Text="{Binding RandomSeed, UpdateSourceTrigger=LostFocus}" Width="80" Style="{StaticResource NumericBox}"
-                                         ToolTip="随机变体的种子；同种子同算法版本可重现"/>
-                                <Button Content="重新生成变体" Margin="12,0,0,0" Command="{Binding RegenerateCommand}"
-                                        ToolTip="点击后才产生新的事件清单；播放、停止再播、导出都复用当前清单"/>
+                                <TextBox Text="{Binding BurstRpm, UpdateSourceTrigger=LostFocus}" Width="66" IsEnabled="{Binding BurstMode}" Style="{StaticResource NumericBox}" AutomationProperties.Name="连发射速 RPM"/>
                             </StackPanel>
-                            <TextBlock Grid.Column="6" Text="{Binding ManifestStatus}" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                       Foreground="{Binding ManifestStatusColor, Converter={StaticResource StringToBrush}}"/>
-                        </Grid>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,16,8">
+                                <TextBlock Text="发数" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBox Text="{Binding BurstShotCount, UpdateSourceTrigger=LostFocus}" Width="54" IsEnabled="{Binding BurstMode}" Style="{StaticResource NumericBox}" AutomationProperties.Name="连发发数"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding ManifestStatus}" VerticalAlignment="Center" Margin="0,0,0,8" Foreground="{Binding ManifestStatusColor, Converter={StaticResource StringToBrush}}"/>
+                        </WrapPanel>
                         <ctl:TimelineCanvas Markers="{Binding TimelineMarkers}" TotalSeconds="{Binding TotalSeconds}"
                                             PlayheadSeconds="{Binding PlayheadSeconds}" Height="88" Margin="0,8,0,0"/>
+                        <Expander Header="变体、A/B 对比与事件表" Margin="0,6,0,0">
+                            <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <WrapPanel Margin="0,10,0,0">
+                                    <TextBlock Text="固定种子" VerticalAlignment="Center" Margin="0,0,8,8"/>
+                                    <TextBox Text="{Binding RandomSeed, UpdateSourceTrigger=LostFocus}" Width="88" Style="{StaticResource NumericBox}" Margin="0,0,8,8" AutomationProperties.Name="配方随机种子"/>
+                                    <Button Content="重新生成变体" Command="{Binding RegenerateCommand}" Margin="0,0,16,8"/>
+                                    <CheckBox Content="松扳机尾音（实验）" IsChecked="{Binding ReleaseTailEnabled}" IsEnabled="{Binding ReleaseTailAvailable}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                                </WrapPanel>
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <StackPanel Orientation="Horizontal">
+                            <WrapPanel>
                                 <TextBlock Text="A/B：" VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}"/>
                                 <Button Content="存为 A" Command="{Binding SetSnapshotACommand}"/>
                                 <Button Content="存为 B" Command="{Binding SetSnapshotBCommand}" Margin="6,0,0,0"/>
@@ -426,12 +392,10 @@
                                 <TextBox Text="{Binding MonitorCompensationDb, UpdateSourceTrigger=LostFocus, StringFormat={}{0:0.0}}" Width="56"
                                          Style="{StaticResource NumericBox}"
                                          ToolTip="仅影响监听，显示数值；不进入导出"/>
-                            </StackPanel>
-                            <TextBlock Grid.Column="1" Text="事件表可替换指定发样本（右键）" Foreground="{StaticResource TextSecondary}" FontSize="12"
-                                       VerticalAlignment="Center"/>
+                            </WrapPanel>
                         </Grid>
                         <Expander Header="事件表（展开可查看与替换每发样本）" Margin="0,8,0,0" Foreground="{StaticResource TextSecondary}">
-                            <DataGrid ItemsSource="{Binding EventRows}" MaxHeight="170" FontSize="12"
+                            <DataGrid ItemsSource="{Binding EventRows}" MaxHeight="170" FontSize="13"
                                       MouseRightButtonUp="OnEventRowRightClick">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="层" Binding="{Binding LayerName}" Width="90"/>
@@ -442,16 +406,20 @@
                                 </DataGrid.Columns>
                             </DataGrid>
                         </Expander>
+                            </StackPanel>
+                            </ScrollViewer>
+                        </Expander>
                     </StackPanel>
                 </Border>
             </Grid>
 
+            </ScrollViewer>
             <!-- ── 右：属性区 ── -->
-            <Border Grid.Column="2" Background="{StaticResource PanelBg}" BorderBrush="{StaticResource BorderBrush}"
+            <Border x:Name="LayerInspector" Grid.Column="2" Visibility="Collapsed" Margin="8,0,0,0" Background="{StaticResource PanelBg}" BorderBrush="{StaticResource BorderBrush}"
                     BorderThickness="1" CornerRadius="4">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="10">
-                        <TextBlock Style="{StaticResource SectionHeader}">
+                        <TextBlock Style="{StaticResource SectionHeader}" TextWrapping="Wrap">
                             <Run Text="层属性　"/>
                             <Run Text="{Binding SelectedLayer.Name, Mode=OneWay}" Foreground="{StaticResource AccentText}"/>
                         </TextBlock>
@@ -463,33 +431,32 @@
                         <TextBlock Text="{Binding SelectedLayer.LengthDisplay}" Margin="0,0,0,8"/>
 
                         <TextBlock Text="完整路径（可复制）" Style="{StaticResource HintText}"/>
-                        <TextBox Text="{Binding SelectedLayer.PathDisplay, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"
+                        <TextBox Text="{Binding SelectedLayer.PathDisplay, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" AutomationProperties.Name="选中层文件路径，可复制"
                                  MaxHeight="60" VerticalScrollBarVisibility="Auto" Background="#1B2128" Margin="0,2,0,8"/>
 
                         <TextBlock Text="样本选择" Style="{StaticResource HintText}"/>
-                        <ComboBox SelectedValue="{Binding SelectedLayer.VariantMode}" SelectedValuePath="Value"
+                        <ComboBox SelectedValue="{Binding SelectedLayer.VariantMode}" SelectedValuePath="Value" AutomationProperties.Name="选中层样本选择方式"
                                   DisplayMemberPath="Label" ItemsSource="{Binding VariantModeOptions}" Margin="0,2,0,4"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Text="层种子" VerticalAlignment="Center" Margin="0,0,6,0" Style="{StaticResource HintText}"/>
-                            <TextBox Text="{Binding SelectedLayer.Seed, UpdateSourceTrigger=LostFocus, TargetNullValue=''}" Width="80"
-                                     Style="{StaticResource NumericBox}" VerticalContentAlignment="Center"
-                                     ToolTip="随机模式使用；留空则用配方种子"/>
-                            <TextBlock Text="固定样本" VerticalAlignment="Center" Margin="12,0,6,0" Style="{StaticResource HintText}"/>
-                            <ComboBox Width="110" ItemsSource="{Binding SelectedLayer.Pool}"
-                                      SelectedValuePath="Id" DisplayMemberPath="VariantLabel"
-                                      SelectedValue="{Binding SelectedLayer.FixedAssetId}"/>
-                        </StackPanel>
-
+                        <TextBlock Text="随机种子（空白沿用配方）" Style="{StaticResource HintText}"/>
+                        <TextBox Text="{Binding SelectedLayer.Seed, UpdateSourceTrigger=LostFocus, TargetNullValue=''}" Style="{StaticResource NumericBox}" Margin="0,4,0,8" AutomationProperties.Name="选中层随机种子"/>
+                        <TextBlock Text="固定样本" Style="{StaticResource HintText}"/>
+                        <ComboBox ItemsSource="{Binding SelectedLayer.Pool}" SelectedValuePath="Id" DisplayMemberPath="VariantLabel" SelectedValue="{Binding SelectedLayer.FixedAssetId}" Margin="0,4,0,12" AutomationProperties.Name="固定样本文件"/>
                         <TextBlock Text="素材池（选定分组指定到该层）" Style="{StaticResource HintText}"/>
-                        <ComboBox x:Name="CmbPoolAssign" ItemsSource="{Binding AvailableGroupKeys}" Margin="0,2,0,8"
+                        <ComboBox x:Name="CmbPoolAssign" ItemsSource="{Binding AvailableGroupKeys}" Margin="0,2,0,8" AutomationProperties.Name="选择素材池分组"
                                   ToolTip="把当前武器的某个分组作为该层素材池"/>
                         <Button Content="把选定分组指定到该层" Click="OnAssignPoolClick"/>
 
+                        <TextBlock Text="增益 dB" Style="{StaticResource HintText}" Margin="0,14,0,0"/>
+                        <Slider Minimum="-60" Maximum="6" Value="{Binding SelectedLayer.GainDb}" SmallChange="0.5" LargeChange="3" AutomationProperties.Name="选中层增益滑杆"/>
+                        <TextBlock Text="延时 ms" Style="{StaticResource HintText}" Margin="0,10,0,0"/>
+                        <Slider Minimum="0" Maximum="1000" Value="{Binding SelectedLayer.DelayMs}" SmallChange="0.1" LargeChange="10" AutomationProperties.Name="选中层延时滑杆"/>
+                        <Expander Header="响度与高级触发规则" Margin="0,14,0,0">
+                            <StackPanel>
                         <TextBlock Text="素材响度（配平依据）" Style="{StaticResource HintText}" Margin="0,8,0,0"/>
                         <TextBlock Text="{Binding SelectedLayer.LoudnessDisplay}" TextWrapping="Wrap" Margin="0,0,0,6"/>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
                             <TextBlock Text="连发同时发声上限" VerticalAlignment="Center" Margin="0,0,6,0" Style="{StaticResource HintText}"/>
-                            <TextBox Text="{Binding SelectedLayer.BurstVoiceLimit, UpdateSourceTrigger=LostFocus}" Width="44"
+                            <TextBox Text="{Binding SelectedLayer.BurstVoiceLimit, UpdateSourceTrigger=LostFocus}" Width="56" AutomationProperties.Name="连发同时发声上限"
                                      Style="{StaticResource NumericBox}"
                                      ToolTip="0 = 不限；超出时最旧实例在新一发起点 30 ms 淡出（只影响连发，单发不受影响）"/>
                         </StackPanel>
@@ -504,11 +471,11 @@
                             <TextBlock Text="作为实验层启用（last / interrupt / FCG）" TextWrapping="Wrap"/>
                         </CheckBox>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                            <ComboBox Width="130" SelectedValue="{Binding SelectedLayer.Trigger}" SelectedValuePath="Value"
+                            <ComboBox Width="130" SelectedValue="{Binding SelectedLayer.Trigger}" SelectedValuePath="Value" AutomationProperties.Name="实验层触发规则"
                                       DisplayMemberPath="Label" ItemsSource="{Binding TriggerOptions}"
                                       IsEnabled="{Binding SelectedLayer.IsExperimental}"/>
                             <TextBlock Text="第 N 发" Margin="8,0,6,0" VerticalAlignment="Center" Style="{StaticResource HintText}"/>
-                            <TextBox Text="{Binding SelectedLayer.TriggerShotNumber, UpdateSourceTrigger=LostFocus}" Width="44"
+                            <TextBox Text="{Binding SelectedLayer.TriggerShotNumber, UpdateSourceTrigger=LostFocus}" Width="44" AutomationProperties.Name="实验层触发发数"
                                      IsEnabled="{Binding SelectedLayer.IsExperimental}"/>
                         </StackPanel>
                         <TextBlock Text="用户设定，原版条件未确认；释放时刻 = 最后一发起点 + 一个射击间隔" Style="{StaticResource WarnText}"
@@ -517,71 +484,49 @@
                         <TextBlock Text="规则来源" Style="{StaticResource HintText}" Margin="0,8,0,0"/>
                         <TextBlock Text="{Binding SelectedLayer.RuleSource}" Margin="0,0,0,8"/>
 
-                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                            <Button Content="播放本层" Click="OnPlayLayerClick"/>
-                            <Button Content="添加层" Command="{Binding AddLayerCommand}" Margin="6,0,0,0"/>
-                            <Button Content="删除层" Command="{Binding RemoveLayerCommand}" Margin="6,0,0,0"/>
-                        </StackPanel>
-
-                        <Separator/>
-
-                        <TextBlock Text="分别输出（当前武器）" Style="{StaticResource SectionHeader}"/>
-                        <CheckBox Content="单发音效" IsChecked="True" IsEnabled="False" ToolTip="在导出对话框中选择"/>
-                        <CheckBox Content="连发音效" IsChecked="True" IsEnabled="False" Margin="0,4,0,6" ToolTip="在导出对话框中选择"/>
-                        <TextBlock Text="两份 WAV + 各自 recipe JSON" Style="{StaticResource HintText}"/>
-                        <TextBlock Text="48 kHz / 24 bit / 立体声（可选 16 bit、32 float）" Style="{StaticResource HintText}" Margin="0,2,0,8"/>
-                        <Button Content="导出单发 / 连发…" Command="{Binding ExportCommand}" Style="{StaticResource AccentButton}"/>
-
-                        <Separator/>
-                        <TextBlock Text="工程" Style="{StaticResource SectionHeader}"/>
-                        <StackPanel Orientation="Horizontal">
-                            <Button Content="重命名工程" Command="{Binding RenameProjectCommand}"/>
-                            <Button Content="另存为…" Command="{Binding SaveAsCommand}" Margin="6,0,0,0"/>
-                        </StackPanel>
-                        <TextBlock Text="保存 .gunmix.json；引用原素材，素材丢失时可重定位；打包工程放入 assets 目录为后续版本功能。"
-                                   Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                            </StackPanel>
+                        </Expander>
+                        <WrapPanel Margin="0,18,0,0">
+                            <Button Content="重命名层" Command="{Binding RenameLayerCommand}" Margin="0,0,8,8"/>
+                            <Button Content="删除层" Command="{Binding RemoveLayerCommand}" Margin="0,0,0,8"/>
+                        </WrapPanel>
+                        <Button Content="高级开火场景…" Click="OnOpenFireStudio" ToolTip="弹药、末弹、动作、声音定义与条件事件映射"/>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
         </Grid>
 
-        <!-- ═══ 底部播放条 ═══ -->
         <Border Grid.Row="2" Background="{StaticResource PanelBg}" BorderBrush="{StaticResource BorderBrush}"
-                BorderThickness="1" CornerRadius="4" Margin="0,6,0,0" Padding="10,4">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="110"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <Button Content="播放预览" Command="{Binding PlayCommand}" MinWidth="90" Style="{StaticResource AccentButton}"/>
-                <Button Grid.Column="1" Content="停止试听" Command="{Binding StopCommand}" MinWidth="84" Margin="8,0,0,0"
-                        ToolTip="短淡出停止当前输出（播放器操作，不触发 interrupt / last / FCG）"/>
-                <Button Grid.Column="2" Content="撤销" Command="{Binding UndoCommand}" MinWidth="52" Margin="12,0,0,0"/>
-                <Button Grid.Column="3" Content="重做" Command="{Binding RedoCommand}" MinWidth="52" Margin="6,0,0,0"/>
-                <TextBlock Grid.Column="4" Text="{Binding PlayTimeText}" FontFamily="Consolas" VerticalAlignment="Center"
-                           HorizontalAlignment="Center"/>
-                <TextBlock Grid.Column="5" Text="{Binding StatusText}" VerticalAlignment="Center" Margin="8,0,0,0"
-                           Foreground="{StaticResource TextSecondary}" FontSize="12"
-                           TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusText}"/>
-                <TextBlock Grid.Column="6" Text="{Binding ErrorText}" VerticalAlignment="Center" Margin="10,0,10,0"
-                           Foreground="{StaticResource ErrorRed}" FontSize="12" TextWrapping="NoWrap"
-                           TextTrimming="CharacterEllipsis" ToolTip="{Binding ErrorText}"/>
-                <TextBlock Grid.Column="7" Text="{Binding DeviceName}" VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}"
-                           FontSize="12" MaxWidth="200" TextTrimming="CharacterEllipsis"/>
-                <StackPanel Grid.Column="8" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="L" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
-                    <ProgressBar x:Name="LevelLBar" Width="70" Height="10" Maximum="1" Value="{Binding LevelL, Mode=OneWay}" Margin="4,0,8,0"/>
-                    <TextBlock Text="R" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
-                    <ProgressBar x:Name="LevelRBar" Width="70" Height="10" Maximum="1" Value="{Binding LevelR, Mode=OneWay}" Margin="4,0,0,0"/>
-                </StackPanel>
-            </Grid>
+                BorderThickness="1" CornerRadius="5" Margin="0,10,0,0" Padding="12,10">
+            <StackPanel>
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding DeviceName}" MaxWidth="180" TextTrimming="CharacterEllipsis" ToolTip="{Binding DeviceName}" Foreground="{StaticResource TextSecondary}" Margin="12,0,16,0"/>
+                        <TextBlock Text="L" VerticalAlignment="Center"/>
+                        <ProgressBar x:Name="LevelLBar" Width="56" Height="10" Maximum="1" Value="{Binding LevelL, Mode=OneWay}" Margin="6,0,12,0" AutomationProperties.Name="左声道电平"/>
+                        <TextBlock Text="R" VerticalAlignment="Center"/>
+                        <ProgressBar x:Name="LevelRBar" Width="56" Height="10" Maximum="1" Value="{Binding LevelR, Mode=OneWay}" Margin="6,0,0,0" AutomationProperties.Name="右声道电平"/>
+                    </StackPanel>
+                    <WrapPanel>
+                        <Button Content="播放预览" Command="{Binding PlayCommand}" Style="{StaticResource AccentButton}" Margin="0,0,8,0" ToolTip="空格播放；焦点在按钮或输入框时保留控件操作"/>
+                        <Button Content="停止试听" Command="{Binding StopCommand}" Margin="0,0,16,0"/>
+                        <Button Content="撤销" Command="{Binding UndoCommand}" Margin="0,0,6,0"/>
+                        <Button Content="重做" Command="{Binding RedoCommand}" Margin="0,0,16,0"/>
+                        <TextBlock Text="{Binding PlayTimeText}" VerticalAlignment="Center" FontFamily="Consolas"/>
+                    </WrapPanel>
+                </DockPanel>
+                <ScrollViewer MaxHeight="60" VerticalScrollBarVisibility="Auto">
+                <TextBlock x:Name="WorkspaceStatus" Text="{Binding StatusText}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,8,0,0"
+                           AutomationProperties.LiveSetting="Polite"/>
+                </ScrollViewer>
+                <TextBox x:Name="WorkspaceError" Text="{Binding ErrorText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="88" VerticalScrollBarVisibility="Auto"
+                         Foreground="{StaticResource ErrorRed}" Margin="0,8,0,0" AutomationProperties.Name="操作错误，可选择并复制" AutomationProperties.LiveSetting="Assertive">
+                    <TextBox.Style><Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                        <Setter Property="Visibility" Value="Visible"/>
+                        <Style.Triggers><DataTrigger Binding="{Binding ErrorText}" Value=""><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers>
+                    </Style></TextBox.Style>
+                </TextBox>
+            </StackPanel>
         </Border>
     </Grid>
 </Window>

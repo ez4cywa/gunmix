@@ -6,7 +6,7 @@
     <UseWPF>true</UseWPF>
     <RootNamespace>GunMix.App</RootNamespace>
     <AssemblyName>GunMix.App</AssemblyName>
-    <Version>0.3.0</Version>
+    <Version>0.3.3</Version>
   </PropertyGroup>
 
   <ItemGroup>

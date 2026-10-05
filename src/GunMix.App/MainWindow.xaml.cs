@@ -2,6 +2,8 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Controls.Primitives;
+using System.Windows.Media;
 using GunMix.App.ViewModels;
 using GunMix.App.Views;
 using GunMix.Core.Audio;
@@ -15,7 +17,7 @@ public partial class MainWindow : Window
     private void OnOpenFireStudio(object sender,RoutedEventArgs e)
     {
         if(Vm.CurrentRecipe==null){Vm.ErrorText="先导入武器素材或打开工程。";return;}
-        Vm.Playback.Stop(immediate:true);
+        Vm.StopPlayback(immediate:true);
         new FireStudioWindow(Vm){Owner=this}.ShowDialog();
     }
 
@@ -42,11 +44,15 @@ public partial class MainWindow : Window
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        // 输入框聚焦时，Space 不触发播放
-        if (e.OriginalSource is TextBox or ComboBox or Slider) return;
+        // 键盘保存/导出与鼠标点击一样，先提交当前输入框的待生效数值。
+        if ((Keyboard.Modifiers & ModifierKeys.Control) != 0 && e.Key is Key.S or Key.E or Key.O
+            && Keyboard.FocusedElement is TextBox activeInput)
+            activeInput.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
         if (e.Key == Key.Space)
         {
-            if (Vm.IsPlaying) Vm.Playback.Stop();
+            // 保留按钮、复选框、下拉框及输入控件的原生空格键行为。
+            if (ReservesSpaceKey(Keyboard.FocusedElement as DependencyObject)) return;
+            if (Vm.IsPlaying) Vm.StopPlayback();
             else if (Vm.PlayCommand.CanExecute(null)) Vm.PlayCommand.Execute(null);
             e.Handled = true;
         }
@@ -60,6 +66,40 @@ public partial class MainWindow : Window
             if (Vm.ExportCommand.CanExecute(null)) Vm.ExportCommand.Execute(null);
             e.Handled = true;
         }
+    }
+
+    internal static bool ReservesSpaceKey(DependencyObject? source)
+    {
+        for (var current = source; current != null;)
+        {
+            if (current is TextBoxBase or PasswordBox or Selector or Slider or ButtonBase or ListBoxItem or TreeView or TreeViewItem)
+                return true;
+            current = current is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(current) ?? LogicalTreeHelper.GetParent(current)
+                : LogicalTreeHelper.GetParent(current);
+        }
+        return false;
+    }
+
+    private void OnInspectorToggle(object sender, RoutedEventArgs e)
+    {
+        if (InspectorColumn == null || LayerInspector == null) return;
+        bool visible = InspectorToggle.IsChecked == true;
+        InspectorColumn.Width = new GridLength(visible ? 290 : 0);
+        LayerInspector.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnWorkspaceSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (LayerList != null) LayerList.MaxHeight = Math.Clamp(ActualHeight - 620, 140, 600);
+    }
+
+    private void OnLayerSettingsClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not LayerVm layer) return;
+        Vm.SelectedLayer = layer;
+        InspectorToggle.IsChecked = true;
+        CmbPoolAssign.Focus();
     }
 
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -81,40 +121,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>直接文件预听（与配方播放互斥：先停止当前输出）。</summary>
-    private void PreviewAsset(AssetInfo asset)
-    {
-        Vm.Playback.Stop(immediate: true);
-        try
-        {
-            var decoded = WavReader.Read(Vm.AssetPathOf(asset));
-            var stereo = decoded.Channels == 2 ? decoded.Data : MonoToStereo(decoded.Data);
-            Vm.Playback.Play(stereo, decoded.SampleRate, 2, Vm.SelectedDevice?.Device, 0, err =>
-            {
-                if (err != null)
-                    Vm.ErrorText = $"无法预听：{err}";
-                else
-                {
-                    Vm.StatusText = $"文件预听：{asset.FileName}（原始格式 {decoded.SampleRate} Hz，不改当前配方）";
-                    Vm.ErrorText = "";
-                }
-            });
-        }
-        catch (Exception ex)
-        {
-            Vm.ErrorText = $"无法预听：{ex.Message}";
-        }
-    }
-
-    private static float[] MonoToStereo(float[] mono)
-    {
-        var stereo = new float[mono.Length * 2];
-        for (int i = 0; i < mono.Length; i++)
-        {
-            stereo[i * 2] = mono[i];
-            stereo[i * 2 + 1] = mono[i];
-        }
-        return stereo;
-    }
+    private async void PreviewAsset(AssetInfo asset) => await Vm.PreviewAssetAsync(asset);
 
     private void OnAssetContextMenu(object sender, ContextMenuEventArgs e)
     {
@@ -227,11 +234,7 @@ public partial class MainWindow : Window
                 var assetId = asset.Id;
                 mi.Click += (_, _) =>
                 {
-                    Vm.PushUndoExternal();
-                    layer.Model.FixedAssetId = assetId;
-                    layer.Model.VariantMode = VariantMode.Fixed;
-                    Vm.NotifyEdited($"层 {layer.Name} 固定样本 → {asset.VariantLabel}");
-                    layer.RefreshAll();
+                    Vm.AssignFixedAsset(layer.Model, assetId);
                 };
                 menu.Items.Add(mi);
             }

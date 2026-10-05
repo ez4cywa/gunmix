@@ -83,8 +83,8 @@ public static class TimelineCompiler
             if(manifest.Matches(recipe,kind,allAssets,weaponId))
             {
                 var overrides = manifest.Entries.Where(e=>e.InstanceId.Length>0).ToDictionary(e=>e.InstanceId);
-                var updated=plan.Events.Select(e=>overrides.TryGetValue(e.InstanceId,out var m)&&plan.AssetById.TryGetValue(m.AssetId,out var a)&&a.WeaponId==weaponId
-                    ?e with{AssetId=m.AssetId,SourceHash=a.Sha256,SelectionReason=e.AssetId==m.AssetId?e.SelectionReason:"项目清单手动覆盖（原定义行保留作参考）"}:e).ToList();
+                var updated=plan.Events.Select(e=>overrides.TryGetValue(e.InstanceId,out var m)&&plan.AssetById.TryGetValue(m.AssetId,out var a)&&Fire.BankAssetBinding.CanOverride(e,a,recipe,weaponId)
+                    ?e with{AssetId=m.AssetId,SourceHash=a.Sha256,AssetOwnerWeaponId=a.WeaponId,SelectionReason=e.AssetId==m.AssetId?e.SelectionReason:"项目清单手动覆盖（原定义行保留作参考）"}:e).ToList();
                 return plan with{Events=updated,TotalSamples=updated.Count==0?0:updated.Max(e=>EventEnd(e,plan.AssetById,sampleRate))};
             }
             return plan;

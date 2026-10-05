@@ -9,7 +9,7 @@ namespace GunMix.Core.Persistence;
 /// <summary>导出配套 JSON：实际事件、输出设置、源哈希、最终峰值和软件版本。</summary>
 public static class RecipeJsonBuilder
 {
-    public const string SoftwareVersion = "枪声分层工作台 0.3.0";
+    public const string SoftwareVersion = "枪声分层工作台 0.3.3";
 
     public static string Build(
         GunProject project,
@@ -98,6 +98,9 @@ public static class RecipeJsonBuilder
                     bank_key = e.BankKey,
                     alias_id = e.AliasId,
                     row_index = e.RowIndex,
+                    original_sound_reference = e.SoundReference,
+                    asset_owner_weapon_id = e.AssetOwnerWeaponId,
+                    cross_weapon_resource = e.AssetOwnerWeaponId is { } owner && owner != weapon.Id,
                     rule_origin = e.RuleOrigin,
                     selection_reason = e.SelectionReason,
                     context = e.ContextSnapshot,

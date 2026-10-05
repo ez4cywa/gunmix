@@ -19,5 +19,11 @@ public partial class ImportDialog : Window
         Bar.Value = done;
     }
 
+    public void SetStage(string text)
+    {
+        ProgressText.Text = text;
+        Bar.IsIndeterminate = true;
+    }
+
     private void OnCancel(object sender, RoutedEventArgs e) => Cancelled?.Invoke();
 }

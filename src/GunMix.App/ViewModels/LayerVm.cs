@@ -72,7 +72,7 @@ public sealed class LayerVm : ViewModelBase
     public VariantMode VariantMode
     {
         get => _layer.VariantMode;
-        set { if (_layer.VariantMode == value) return; _owner.EditLayer(_layer, "样本选择", invalidateManifest: true, l => l.VariantMode = value); Raise(); }
+        set { if (_layer.VariantMode == value) return; _owner.EditLayer(_layer, "样本选择", invalidateManifest: true, l => l.VariantMode = value, rebuildManifests: true); Raise(); }
     }
 
     public int? Seed
@@ -130,28 +130,16 @@ public sealed class LayerVm : ViewModelBase
         }
     }
 
-    /// <summary>当前变体显示（清单当前选择的文件）。</summary>
-    public string CurrentVariant
-    {
-        get
-        {
-            var manifest = _owner.CurrentRecipe?.SingleManifest;
-            var entry = manifest?.Entries.FirstOrDefault(e => e.LayerId == _layer.Id);
-            if (entry == null) return "—";
-            var asset = _owner.FindAsset(entry.AssetId);
-            if (asset == null) return "素材缺失";
-            var v = asset.Parsed?.Variant;
-            return v != null ? $"{asset.GroupKey} / {v:00}" : asset.FileName;
-        }
-    }
+    /// <summary>当前选中的完整文件名，与详情及波形使用同一素材。</summary>
+    public string CurrentVariant => _owner.DisplayedLayerAsset(_layer)?.FileName ?? "—";
 
     public string FormatDisplay
     {
         get
         {
-            var asset = _owner.FirstPoolAsset(_layer);
+            var asset = _owner.DisplayedLayerAsset(_layer);
             if (asset == null) return "—";
-            return $"{asset.Format.SampleRate} kHz / {asset.Format.BitsPerSample} bit / {(asset.Format.Channels == 1 ? "单声道" : "双声道")}";
+            return $"{asset.Format.SampleRate / 1000.0:0.###} kHz / {asset.Format.BitsPerSample} bit / {(asset.Format.Channels == 1 ? "单声道" : "双声道")}";
         }
     }
 
@@ -159,13 +147,13 @@ public sealed class LayerVm : ViewModelBase
     {
         get
         {
-            var asset = _owner.FirstPoolAsset(_layer);
+            var asset = _owner.DisplayedLayerAsset(_layer);
             if (asset == null) return "—";
             return $"{asset.Format.DurationSeconds:0.000} 秒（文件头实测）";
         }
     }
 
-    public string PathDisplay => _owner.FirstPoolAsset(_layer) is { } a ? _owner.AssetPathOf(a) : "—";
+    public string PathDisplay => _owner.DisplayedLayerAsset(_layer) is { } a ? _owner.AssetPathOf(a) : "—";
 
     /// <summary>当前层素材池（用于固定样本选择与事件表替换）。</summary>
     /// <summary>成员不变时返回同一集合实例，避免绑定的下拉框因列表替换而重置选择。</summary>
@@ -188,7 +176,7 @@ public sealed class LayerVm : ViewModelBase
     {
         get => _layer.FixedAssetId;
         // 下拉框在列表替换或切换选中层时会回写 null 或上一层的样本：只接受本层素材池内的新值，避免循环与串层
-        set { if (value == null || _layer.FixedAssetId == value || Pool.All(a => a.Id != value)) return; _owner.EditLayer(_layer, "固定样本", invalidateManifest: true, l => l.FixedAssetId = value); Raise(); }
+        set { if (value == null || _layer.FixedAssetId == value || Pool.All(a => a.Id != value)) return; _owner.EditLayer(_layer, "固定样本", invalidateManifest: true, l => l.FixedAssetId = value, rebuildManifests: true); Raise(); }
     }
 
     private WaveformPeaks? _peaks;
@@ -200,7 +188,9 @@ public sealed class LayerVm : ViewModelBase
 
     public void RefreshWaveform()
     {
-        var asset = _owner.FirstPoolAsset(_layer);
+        long generation = Interlocked.Increment(ref _waveformGeneration);
+        var asset = _owner.DisplayedLayerAsset(_layer);
+        Peaks = null;
         if (asset == null)
         {
             Peaks = null;
@@ -222,9 +212,11 @@ public sealed class LayerVm : ViewModelBase
             }
         }).ContinueWith(t =>
         {
-            if (t.Result != null) Peaks = t.Result;
+            if (generation == Interlocked.Read(ref _waveformGeneration)) Peaks = t.Result;
         }, scheduler);
     }
+
+    private long _waveformGeneration;
 
     public void RefreshAll()
     {
@@ -234,6 +226,8 @@ public sealed class LayerVm : ViewModelBase
         Raise(nameof(LengthDisplay));
         Raise(nameof(PathDisplay));
         Raise(nameof(Pool));
+        Raise(nameof(FixedAssetId));
+        Raise(nameof(VariantMode));
         Raise(nameof(RuleSource));
         Raise(nameof(LoudnessDisplay));
         Raise(nameof(BurstVoiceLimit));

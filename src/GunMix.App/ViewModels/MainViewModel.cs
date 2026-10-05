@@ -57,14 +57,14 @@ public sealed class MainViewModel : ViewModelBase
         Playback.LevelsChanged += (l, r) => _ui.Post(_ => { LevelL = l; LevelR = r; }, null);
 
         LoadDevices();
-        ImportCommand = new RelayCommand(ImportFolder);
+        ImportCommand = new RelayCommand(ImportFolder, () => !IsImporting);
         OpenCommand = new RelayCommand(OpenProject);
         SaveCommand = new RelayCommand(SaveProject, () => ProjectLoaded);
         SaveAsCommand = new RelayCommand(SaveProjectAs, () => ProjectLoaded);
         UndoCommand = new RelayCommand(DoUndo, () => CanUndo);
         RedoCommand = new RelayCommand(DoRedo, () => CanRedo);
         PlayCommand = new RelayCommand(PlayPreview, () => ProjectLoaded && !IsPlaying);
-        StopCommand = new RelayCommand(() => { Playback.Stop(); Raise(nameof(PlayCommand)); });
+        StopCommand = new RelayCommand(() => { StopPlayback(); StatusText = "试听已停止"; Raise(nameof(PlayCommand)); });
         CopyRecipeCommand = new RelayCommand(CopyRecipe, () => CurrentRecipe != null);
         RenameRecipeCommand = new RelayCommand(RenameRecipe, () => CurrentRecipe != null);
         AddLayerCommand = new RelayCommand(AddLayer, () => CurrentRecipe != null);
@@ -503,7 +503,7 @@ public sealed class MainViewModel : ViewModelBase
     }
 
     /// <summary>一次层编辑：推快照 → 修改 → 标脏 → 刷新状态。</summary>
-    internal void EditLayer(Layer layer, string what, bool invalidateManifest, Action<Layer> change)
+    internal void EditLayer(Layer layer, string what, bool invalidateManifest, Action<Layer> change, bool rebuildManifests = false)
     {
         // 刷新界面期间下拉框等控件会同步回写绑定值：嵌套的层编辑只可能是这种回显，不是用户操作，直接忽略，
         // 否则“回写 → 编辑 → 刷新 → 回写”会无限递归
@@ -512,9 +512,15 @@ public sealed class MainViewModel : ViewModelBase
         try
         {
             PushUndo();
+            var recipe = CurrentRecipe;
+            var previousSingle = rebuildManifests && recipe?.SingleManifest?.Matches(recipe, ManifestKind.Single, _project.Assets, CurrentWeaponId) == true
+                ? recipe.SingleManifest : null;
+            var previousBurst = rebuildManifests && recipe?.BurstManifest?.Matches(recipe, ManifestKind.Burst, _project.Assets, CurrentWeaponId) == true
+                ? recipe.BurstManifest : null;
             change(layer);
             MarkDirty();
-            if (invalidateManifest) RefreshManifestState();
+            if (rebuildManifests) RebuildManifests(layer.Id, previousSingle, previousBurst);
+            else if (invalidateManifest) RefreshManifestState();
             var vm = Layers.FirstOrDefault(x => x.Id == layer.Id);
             vm?.RefreshAll();
             if (SelectedLayer?.Id == layer.Id) SelectedLayer = vm; // 触发右侧属性刷新
@@ -627,16 +633,36 @@ public sealed class MainViewModel : ViewModelBase
     /// <summary>重新生成变体：产生新的事件清单（播放、停止再播、导出都复用当前清单）。</summary>
     public void RegenerateManifests()
     {
+        if (_project.ActiveWeapon == null || CurrentRecipe == null) return;
+        PushUndo();
+        RebuildManifests();
+        foreach (var l in Layers) l.RefreshAll();
+        StatusText = "预览已更新";
+    }
+
+    private void RebuildManifests(Guid? changedLayerId = null, EventManifest? previousSingle = null, EventManifest? previousBurst = null)
+    {
         var weapon = _project.ActiveWeapon;
         var recipe = CurrentRecipe;
         if (weapon == null || recipe == null) return;
-        PushUndo();
         recipe.SingleManifest = TimelineCompiler.BuildManifest(recipe, _project.Assets, weapon.Id, ManifestKind.Single);
         recipe.BurstManifest = TimelineCompiler.BuildManifest(recipe, _project.Assets, weapon.Id, ManifestKind.Burst);
+        // 局部素材选择不抹掉其他层在事件表里指定的样本。
+        PreserveOtherLayers(recipe.SingleManifest, previousSingle);
+        PreserveOtherLayers(recipe.BurstManifest, previousBurst);
         MarkDirty();
         RefreshManifestState();
-        foreach (var l in Layers) l.RefreshAll();
-        StatusText = "预览已更新";
+
+        void PreserveOtherLayers(EventManifest fresh, EventManifest? previous)
+        {
+            if (changedLayerId == null || previous == null) return;
+            var old = previous.Entries.ToLookup(e => (e.LayerId, e.ShotIndex, e.InstanceId));
+            foreach (var entry in fresh.Entries.Where(e => e.LayerId != changedLayerId))
+            {
+                var original = old[(entry.LayerId, entry.ShotIndex, entry.InstanceId)].FirstOrDefault();
+                if (original != null) entry.AssetId = original.AssetId;
+            }
+        }
     }
 
     private void EnsureManifests()
@@ -877,12 +903,18 @@ public sealed class MainViewModel : ViewModelBase
 
     private void PlayRendered(CompiledTimeline timeline, double monitorDb)
     {
+        int generation = StopPlayback(immediate: true);
+        int sampleRate = _project.SampleRate;
+        var paths = timeline.AssetById.Values.ToDictionary(a => a.Id, AssetPathOf);
+        StatusText = "正在渲染预览…";
         Task.Run(() =>
         {
-            var mix = MixKernel.Render(timeline, ResolveBuffer, 2);
+            var mix = MixKernel.Render(timeline, ev => paths.TryGetValue(ev.AssetId, out var path) && File.Exists(path)
+                ? Cache.Get(ev.AssetId, path, sampleRate) : null, 2);
             return new { mix.Data, mix.MissingAssets };
         }).ContinueWith(t =>
         {
+            if (generation != Volatile.Read(ref _previewGeneration)) { _ = t.Exception; return; }
             if (t.IsFaulted)
             {
                 ErrorText = $"预览渲染失败：{t.Exception?.GetBaseException().Message}";
@@ -895,8 +927,9 @@ public sealed class MainViewModel : ViewModelBase
             }
             StatusText = "正在启动输出设备…";
             // 设备初始化在后台 MTA 线程；完成后回调到界面线程。
-            Playback.Play(t.Result.Data, _project.SampleRate, 2, SelectedDevice?.Device, monitorDb, err =>
+            Playback.Play(t.Result.Data, sampleRate, 2, SelectedDevice?.Device, monitorDb, err =>
             {
+                if (generation != Volatile.Read(ref _previewGeneration)) return;
                 if (err != null)
                 {
                     ErrorText = $"无法启动输出设备：{err}";
@@ -912,6 +945,45 @@ public sealed class MainViewModel : ViewModelBase
                 Raise(nameof(StopCommand));
             });
         }, _uiScheduler);
+    }
+
+    private int _previewGeneration;
+
+    public int StopPlayback(bool immediate = false)
+    {
+        int generation = Interlocked.Increment(ref _previewGeneration);
+        Playback.Stop(immediate);
+        return generation;
+    }
+
+    public async Task PreviewAssetAsync(AssetInfo asset)
+    {
+        int generation = StopPlayback(immediate: true);
+        string path = AssetPathOf(asset);
+        StatusText = $"正在读取预听素材：{asset.FileName}";
+        try
+        {
+            var prepared = await Task.Run(() =>
+            {
+                var decoded = WavReader.Read(path);
+                if (decoded.Channels == 2) return (decoded.Data, decoded.SampleRate);
+                var stereo = new float[checked(decoded.Data.Length * 2)];
+                for (int i = 0; i < decoded.Data.Length; i++) stereo[i * 2] = stereo[i * 2 + 1] = decoded.Data[i];
+                return (Data: stereo, decoded.SampleRate);
+            });
+            if (generation != Volatile.Read(ref _previewGeneration)) return;
+            Playback.Play(prepared.Data, prepared.SampleRate, 2, SelectedDevice?.Device, 0, err =>
+            {
+                if (generation != Volatile.Read(ref _previewGeneration)) return;
+                IsPlaying = err == null;
+                ErrorText = err == null ? "" : $"无法预听：{err}";
+                StatusText = err == null ? $"文件预听：{asset.FileName}（原始格式 {prepared.SampleRate} Hz）" : "";
+            });
+        }
+        catch (Exception ex)
+        {
+            if (generation == Volatile.Read(ref _previewGeneration)) ErrorText = $"无法预听：{ex.Message}";
+        }
     }
 
     private AssetBuffer? ResolveBuffer(ShotEvent ev)
@@ -1002,53 +1074,86 @@ public sealed class MainViewModel : ViewModelBase
     }
 
     /// <summary>由对话框或恢复流程调用。</summary>
-    public void ImportFolderInternal(string folder)
+    public void ImportFolderInternal(string folder) => _ = ImportFolderAsync(folder);
+
+    private bool _isImporting;
+    public bool IsImporting { get => _isImporting; private set => Set(ref _isImporting, value); }
+
+    public async Task ImportFolderAsync(string folder)
     {
+        if (IsImporting) return;
+        IsImporting = true;
+        System.Windows.Input.CommandManager.InvalidateRequerySuggested();
         ErrorText = "";
         StatusText = "正在扫描…";
-        var overrides = _project.ManualGroupOverrides;
-        var report = new ImportReport();
-        bool cancelled = false;
+        var destinationProject = _project;
+        var overrides = new Dictionary<string, string>(_project.ManualGroupOverrides);
+        int sampleRate = _project.SampleRate;
+        using var cancel = new CancellationTokenSource();
+        bool finished = false;
         var progressWindow = new Views.ImportDialog($"正在扫描 {Path.GetFileName(folder.TrimEnd('\\', '/'))}");
-        progressWindow.Cancelled += () => cancelled = true;
-        progressWindow.Show();
-
-        Task.Run(() =>
+        progressWindow.Cancelled += () => cancel.Cancel();
+        progressWindow.Closed += (_, _) => { if (!finished) cancel.Cancel(); };
+        try
         {
-            var svc = new AssetService();
-            return svc.ImportDirectory(folder,
-                progress: (done, total) => _ui.Post(_ => progressWindow.Update(done, total), null),
-                isCancelled: () => cancelled,
-                includeSubdirectories: true,
-                manualGroupOverrides: overrides.Count > 0 ? overrides : null);
-        }).ContinueWith(t =>
-        {
-            progressWindow.Close();
-            if (t.IsFaulted)
+            progressWindow.Show();
+            var scanned = await Task.Run(() =>
             {
-                ErrorText = $"导入失败：{t.Exception?.GetBaseException().Message}";
-                StatusText = "";
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                long lastUpdate = -200;
+                var imported = new AssetService().ImportDirectory(folder,
+                    progress: (done, total) =>
+                    {
+                        if (done != total && watch.ElapsedMilliseconds - lastUpdate < 100) return;
+                        lastUpdate = watch.ElapsedMilliseconds;
+                        _ui.Post(_ => { if (!finished && !cancel.IsCancellationRequested) progressWindow.Update(done, total); }, null);
+                    },
+                    isCancelled: () => cancel.IsCancellationRequested, includeSubdirectories: true,
+                    manualGroupOverrides: overrides.Count > 0 ? overrides : null);
+                cancel.Token.ThrowIfCancellationRequested();
+                _ui.Post(_ => { if (!finished) progressWindow.SetStage("正在生成配方并计算峰值…"); }, null);
+                var prepared = ProjectFactory.CreateFromImport(imported, folder, loader: asset =>
+                {
+                    cancel.Token.ThrowIfCancellationRequested();
+                    return Cache.Get(asset.Id, Path.Combine(asset.SourceDirectory, asset.FileName), sampleRate);
+                });
+                cancel.Token.ThrowIfCancellationRequested();
+                return (Imported: imported, Project: prepared);
+            }, cancel.Token);
+            cancel.Token.ThrowIfCancellationRequested();
+            if (!ReferenceEquals(destinationProject, _project))
+            {
+                StatusText = "工程已切换，旧导入结果已取消。";
                 return;
             }
-            var imported = t.Result;
+            var imported = scanned.Imported;
             if (imported.Assets.Count == 0 && imported.Failures.Count == 0)
             {
                 StatusText = "";
                 ErrorText = "没有找到 WAV 文件。支持单/双声道 PCM 16/24/32 bit 与 IEEE float 32 bit WAV。";
                 return;
             }
-            ApplyImport(imported, folder);
-        }, _uiScheduler);
+            ApplyImport(imported, folder, scanned.Project);
+        }
+        catch (OperationCanceledException) { StatusText = "导入已取消，未应用导入结果。"; }
+        catch (Exception ex) { ErrorText = $"导入失败：{ex.Message}"; StatusText = ""; }
+        finally
+        {
+            finished = true;
+            progressWindow.Close();
+            IsImporting = false;
+            System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+        }
     }
 
     /// <summary>应用导入结果（内部：供导入流程与测试直接调用）。</summary>
-    internal void ApplyImport(ImportReport imported, string folder)
+    internal void ApplyImport(ImportReport imported, string folder, GunProject? prepared = null)
     {
         PushUndo();
         if (_project.Assets.Count == 0 && _project.Weapons.Count == 0)
         {
             // 空工程：直接以导入内容建工程
-            var newProject = ProjectFactory.CreateFromImport(imported, folder, loader: LoadAsset);
+            var newProject = prepared ?? ProjectFactory.CreateFromImport(imported, folder, loader: LoadAsset);
             _project = newProject;
         }
         else
@@ -1061,7 +1166,8 @@ public sealed class MainViewModel : ViewModelBase
                 var weaponName = AssetService.WeaponNameOf(asset) ?? Path.GetFileName(folder.TrimEnd('\\', '/'));
                 if (!byName.TryGetValue(weaponName, out var weapon))
                 {
-                    weapon = new Weapon { Name = weaponName, TypeName = WeaponTypes.GuessFromName(weaponName) };
+                    weapon = prepared?.Weapons.FirstOrDefault(w => w.Name.Equals(weaponName, StringComparison.OrdinalIgnoreCase))
+                        ?? new Weapon { Name = weaponName, TypeName = WeaponTypes.GuessFromName(weaponName) };
                     _project.Weapons.Add(weapon);
                     byName[weaponName] = weapon;
                     created.Add(weapon);
@@ -1074,7 +1180,7 @@ public sealed class MainViewModel : ViewModelBase
             {
                 var assets = _project.Assets.Where(a => a.WeaponId == weapon.Id).ToList();
                 weapon.TypeName = AssetService.TypeFromDirectories(assets) ?? weapon.TypeName;
-                ProjectFactory.SetupNewWeapon(weapon, assets, LoadAsset, _project.SampleRate);
+                if (prepared == null) ProjectFactory.SetupNewWeapon(weapon, assets, LoadAsset, _project.SampleRate);
             }
         }
 
@@ -1145,6 +1251,7 @@ public sealed class MainViewModel : ViewModelBase
 
     private void LoadProject(GunProject project, string? path)
     {
+        StopPlayback(immediate: true);
         _project = project;
         _projectPath = path;
         _dirty = false;
@@ -1449,6 +1556,22 @@ public sealed class MainViewModel : ViewModelBase
     public AssetInfo? FirstPoolAsset(Layer layer) =>
         AssetService.ResolvePool(layer, _project.Assets, CurrentWeaponId).FirstOrDefault();
 
+    /// <summary>当前实际选中的文件，用于名称、格式、路径和波形的统一显示。</summary>
+    public AssetInfo? DisplayedLayerAsset(Layer layer)
+    {
+        var pool = AssetService.ResolvePool(layer, _project.Assets, CurrentWeaponId);
+        if (layer.VariantMode == VariantMode.Fixed && layer.FixedAssetId is { } fixedId)
+            return pool.FirstOrDefault(a => a.Id == fixedId) ?? pool.FirstOrDefault();
+        var recipe = CurrentRecipe;
+        var manifest = recipe?.SingleManifest;
+        if (recipe != null && manifest != null && manifest.Matches(recipe, ManifestKind.Single, _project.Assets, CurrentWeaponId))
+        {
+            var assetId = manifest.Entries.FirstOrDefault(e => e.LayerId == layer.Id)?.AssetId;
+            if (assetId != null) return pool.FirstOrDefault(a => a.Id == assetId) ?? FindAsset(assetId.Value);
+        }
+        return pool.FirstOrDefault();
+    }
+
     public string AssetPathOf(AssetInfo asset) =>
         _assetPaths.TryGetValue(asset.Id, out var p) ? p : Path.Combine(asset.SourceDirectory, asset.FileName);
 
@@ -1473,22 +1596,26 @@ public sealed class MainViewModel : ViewModelBase
     /// <summary>把素材池指定到层（拖入中央指定层）。</summary>
     public void AssignPool(Layer layer, string groupKey, List<Guid>? assetIds = null)
     {
-        PushUndo();
-        if (assetIds is { Count: > 0 })
+        EditLayer(layer, "素材池", invalidateManifest: true, l =>
         {
-            layer.PoolAssetIds = assetIds;
-            layer.PoolGroupKey = "";
-            layer.FixedAssetId ??= assetIds[0];
-        }
-        else
-        {
-            layer.PoolGroupKey = groupKey;
-            layer.PoolAssetIds = [];
-        }
-        MarkDirty();
-        RefreshManifestState();
-        RebuildLayers();
+            l.PoolAssetIds = assetIds is { Count: > 0 } ? [.. assetIds] : [];
+            l.PoolGroupKey = assetIds is { Count: > 0 } ? "" : groupKey;
+            var pool = AssetService.ResolvePool(l, _project.Assets, CurrentWeaponId);
+            if (!pool.Any(a => a.Id == l.FixedAssetId)) l.FixedAssetId = pool.FirstOrDefault()?.Id;
+        }, rebuildManifests: true);
         StatusText = $"层 {layer.Name} 素材池 → {(assetIds is { Count: > 0 } ? $"{assetIds.Count} 个文件" : groupKey)}";
+    }
+
+    public void AssignFixedAsset(Layer layer, Guid assetId)
+    {
+        var asset = AssetService.ResolvePool(layer, _project.Assets, CurrentWeaponId).FirstOrDefault(a => a.Id == assetId);
+        if (asset == null) return;
+        EditLayer(layer, "固定样本", invalidateManifest: true, l =>
+        {
+            l.FixedAssetId = assetId;
+            l.VariantMode = VariantMode.Fixed;
+        }, rebuildManifests: true);
+        StatusText = $"层 {layer.Name} 固定样本 → {asset.FileName}";
     }
 
     /// <summary>复制配方到另一武器（只复制结构参数，素材要求重新映射）。</summary>
@@ -1503,6 +1630,15 @@ public sealed class MainViewModel : ViewModelBase
     // ───────────────────────── 导出 ─────────────────────────
 
     /// <summary>导出预览信息：目标文件名与预计时长（按当前清单编译）。</summary>
+    internal void PrepareExportManifests()
+    {
+        var recipe = CurrentRecipe;
+        if (recipe == null) return;
+        if (recipe.SingleManifest?.Matches(recipe, ManifestKind.Single, _project.Assets, CurrentWeaponId) != true
+            || recipe.BurstManifest?.Matches(recipe, ManifestKind.Burst, _project.Assets, CurrentWeaponId) != true)
+            RegenerateManifests();
+    }
+
     public (string FileName, double? EstimatedSeconds, string KindLabel) ExportPreviewInfo(ManifestKind kind)
     {
         var weapon = _project.ActiveWeapon;
@@ -1908,6 +2044,7 @@ public sealed class MainViewModel : ViewModelBase
 
     public void Shutdown()
     {
+        Interlocked.Increment(ref _previewGeneration);
         if (_dirty) ProjectStore.SaveRecovery(_project, _projectPath);
         Playback.Dispose();
         Cache.Dispose();

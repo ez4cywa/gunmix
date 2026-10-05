@@ -77,7 +77,7 @@ public static class Exporter
                 WavWriter.Write(sTemp, ExportTargets.SourceEngine.SampleRate, ExportTargets.SourceEngine.BitsPerSample,
                     false, monoDownmix ? 1 : channels, source);
                 File.Move(sTemp, finalPath, overwrite);
-                int sQuantizedPeak = Quantizer.BytesToInt16(source).Max(Math.Abs) is { } sm ? sm : 0;
+                int sQuantizedPeak = Quantizer.BytesToInt16(source).Select(v => Math.Abs((int)v)).DefaultIfEmpty(0).Max();
                 double sDur = (double)source.Length / (ExportTargets.SourceEngine.SampleRate * (monoDownmix ? 1 : channels) * 2);
                 return new ExportResult
                 {
@@ -108,7 +108,7 @@ public static class Exporter
             string? temp = Path.Combine(Path.GetDirectoryName(finalPath) ?? ".",
                 Path.GetFileNameWithoutExtension(finalPath) + ".part" + Path.GetExtension(finalPath));
 
-            int quantizedPeak;
+            double quantizedPeak;
             switch (bitDepth)
             {
                 case 16:
@@ -116,7 +116,7 @@ public static class Exporter
                     var shorts = dither
                         ? Quantizer.ToInt16(mixedData, true, ditherSeed, gain)
                         : Quantizer.ToInt16Legacy(mixedData, gain);
-                    quantizedPeak = shorts.Max(Math.Abs) is { } m ? m : 0;
+                    quantizedPeak = shorts.Select(v => Math.Abs((int)v)).DefaultIfEmpty(0).Max();
                     WavWriter.Write(temp, sampleRate, 16, false, channels, Quantizer.ToInt16Bytes(shorts));
                     break;
                 }
@@ -129,8 +129,10 @@ public static class Exporter
                 }
                 case 32:
                 {
-                    var bytes = Quantizer.ToFloat32Bytes(mixedData);
-                    quantizedPeak = (int)Math.Round(peak * 8388608);
+                    // Measure the samples actually written; float full scale is 1.0.
+                    var output = gain == 1.0 ? mixedData : mixedData.Select(v => (float)(v * gain)).ToArray();
+                    var bytes = Quantizer.ToFloat32Bytes(output);
+                    quantizedPeak = output.Select(v => Math.Abs((double)v)).DefaultIfEmpty(0).Max();
                     WavWriter.Write(temp, sampleRate, 32, true, channels, bytes);
                     break;
                 }

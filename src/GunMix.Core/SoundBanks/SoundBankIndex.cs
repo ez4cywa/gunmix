@@ -37,7 +37,7 @@ public sealed class SoundBankIndex
     /// <summary>别名 → 引用了但未导出的条目数（用于界面说明“原版有这一层，素材未导出”）。</summary>
     private readonly Dictionary<string, int> _missingByAlias = new(StringComparer.Ordinal);
 
-    /// <summary>别名 → 同时触发的配对别名（具名，去重）。</summary>
+    /// <summary>别名 → 静态关联别名（去重）；实际触发时序尚未证明。</summary>
     private readonly Dictionary<string, SortedSet<string>> _pairs = new(StringComparer.Ordinal);
 
     public List<SoundBankInfo> Banks { get; } = [];

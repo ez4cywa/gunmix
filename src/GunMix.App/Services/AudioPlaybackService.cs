@@ -14,12 +14,14 @@ namespace GunMix.App.Services;
 /// </summary>
 public sealed class AudioPlaybackService : IDisposable
 {
-    private WasapiOut? _output;
+    private IWavePlayer? _output;
+    private readonly Func<IWavePlayer>? _outputFactory;
     private FadeOutProvider? _current;
     private readonly object _lock = new();
-    private readonly MMDeviceEnumerator _enumerator;
+    private readonly MMDeviceEnumerator? _enumerator;
     private readonly MMDeviceNotificationNotifications _notificationStub;
     private int _playGen;
+    private int _disposed;
 
     public bool IsPlaying { get; private set; }
     public string? DeviceFriendlyName { get; private set; }
@@ -29,9 +31,12 @@ public sealed class AudioPlaybackService : IDisposable
     public event Action<double, double>? LevelsChanged; // L/R 峰值 0..1
     public event Action? DeviceRemoved;
 
-    public AudioPlaybackService()
+    public AudioPlaybackService() : this(null) { }
+
+    internal AudioPlaybackService(Func<IWavePlayer>? outputFactory)
     {
-        _enumerator = new MMDeviceEnumerator();
+        _outputFactory = outputFactory;
+        _enumerator = outputFactory == null ? new MMDeviceEnumerator() : null;
         // 设备被拔出：停止播放并更新设备状态，不丢工程，不无限重试抢占设备。
         _notificationStub = new MMDeviceNotificationNotifications();
         _notificationStub.DeviceRemoved += _ =>
@@ -41,7 +46,7 @@ public sealed class AudioPlaybackService : IDisposable
         };
         try
         {
-            _enumerator.RegisterEndpointNotificationCallback(_notificationStub);
+            _enumerator?.RegisterEndpointNotificationCallback(_notificationStub);
         }
         catch
         {
@@ -53,6 +58,7 @@ public sealed class AudioPlaybackService : IDisposable
     public IReadOnlyList<(MMDevice Device, string Name)> EnumerateDevices()
     {
         var list = new List<(MMDevice, string)>();
+        if (_enumerator == null) return list;
         try
         {
             foreach (var d in _enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
@@ -75,65 +81,54 @@ public sealed class AudioPlaybackService : IDisposable
     public void Play(float[] data, int sampleRate, int channels, MMDevice? device, double monitorGainDb = 0,
         Action<string?>? onStarted = null)
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         var ctx = SynchronizationContext.Current;
         Stop(immediate: true);
-        int gen = ++_playGen;
+        int gen;
+        lock (_lock) gen = ++_playGen;
 
         Task.Run(() =>
         {
             string? error = null;
+            IWavePlayer? pendingOutput = null;
             try
             {
+                lock (_lock) { if (gen != _playGen) return; }
+                // COM 格式协商和设备初始化可能很慢，绝不能占用界面停止操作需要的锁。
+                pendingOutput = CreateOutput(device, out var effectiveDevice);
+                var source = new BufferedFloatSource(data, sampleRate, channels);
+                var fader = new FadeOutProvider(source, monitorGainDb);
+                fader.FadeCompleted += () => StopGeneration(gen);
+                pendingOutput.Init(new SampleProviderWaveAdapter(fader));
+                lock (_lock) { if (gen != _playGen) return; }
+                pendingOutput.Play();
                 lock (_lock)
                 {
-                    if (gen != _playGen)
-                    {
-                        return; // 播放请求已被新的停止/播放取代
-                    }
-                    var output = CreateOutput(device, out var effectiveDevice);
-                    try
-                    {
-                        var source = new BufferedFloatSource(data, sampleRate, channels);
-                        var fader = new FadeOutProvider(source, monitorGainDb);
-                        fader.FadeCompleted += () => Stop(immediate: true);
-                        // 必须显式包一层 IWaveProvider：NAudio 的 Init(ISampleProvider) 扩展
-                        // 会用 WaveBuffer 把 byte[] 伪装成 float[] 回传，任何 Array.Copy / 元素赋值
-                        // 都会在播放线程上抛 ArrayTypeMismatchException，表现为“无异常但完全无声”。
-                        output.Init(new SampleProviderWaveAdapter(fader));
-                        output.Play();
-                        if (gen != _playGen)
-                        {
-                            output.Stop();
-                            output.Dispose();
-                            return;
-                        }
-                        _current = fader;
-                        _current.BlockPlayed += OnBlockPlayed;
-                        _output = output;
-                        _output.PlaybackStopped += OnStopped;
-                        IsPlaying = true;
-                        DeviceFriendlyName = effectiveDevice?.FriendlyName ?? "系统默认输出";
-                    }
-                    catch
-                    {
-                        output.Dispose();
-                        throw;
-                    }
+                    if (gen != _playGen) return;
+                    _current = fader;
+                    _current.BlockPlayed += OnBlockPlayed;
+                    _output = pendingOutput;
+                    _output.PlaybackStopped += OnStopped;
+                    IsPlaying = true;
+                    DeviceFriendlyName = effectiveDevice?.FriendlyName ?? "系统默认输出";
+                    pendingOutput = null; // 发布成功，生命周期交给停止路径。
                 }
             }
             catch (Exception ex)
             {
                 lock (_lock)
                 {
-                    CleanupOutput();
+                    if (gen != _playGen) return;
                     IsPlaying = false;
                 }
                 error = DescribeError(ex);
             }
+            finally { QueueCleanup(pendingOutput); }
             if (onStarted != null)
             {
-                if (ctx != null) ctx.Post(_ => onStarted(error), null);
-                else onStarted(error);
+                void Notify() { if (gen == Volatile.Read(ref _playGen)) onStarted(error); }
+                if (ctx != null) ctx.Post(_ => Notify(), null);
+                else Notify();
             }
         });
     }
@@ -144,8 +139,9 @@ public sealed class AudioPlaybackService : IDisposable
         _ => ex.Message,
     };
 
-    private WasapiOut CreateOutput(MMDevice? device, out MMDevice? effectiveDevice)
+    private IWavePlayer CreateOutput(MMDevice? device, out MMDevice? effectiveDevice)
     {
+        if (_outputFactory != null) { effectiveDevice = null; return _outputFactory(); }
         if (device != null)
         {
             try
@@ -170,40 +166,72 @@ public sealed class AudioPlaybackService : IDisposable
 
     private void OnStopped(object? sender, StoppedEventArgs e)
     {
-        bool was = IsPlaying;
-        IsPlaying = false;
+        bool was;
+        lock (_lock)
+        {
+            if (!ReferenceEquals(sender, _output)) return;
+            was = IsPlaying;
+            IsPlaying = false;
+        }
         if (was) PlaybackStopped?.Invoke();
     }
 
     /// <summary>停止：短淡出后停止当前输出。</summary>
     public void Stop(bool immediate = false)
     {
+        IWavePlayer? output;
+        bool was;
         lock (_lock)
         {
-            _playGen++;
             if (_current != null && !immediate && IsPlaying)
             {
                 _current.BeginFade(0.06); // 短淡出
                 return;
             }
-            bool was = IsPlaying;
-            CleanupOutput();
+            _playGen++;
+            was = IsPlaying;
+            output = DetachOutput();
             IsPlaying = false;
-            if (was) PlaybackStopped?.Invoke(); // 仅在真实停止时通知，避免状态抖动
         }
+        QueueCleanup(output);
+        if (was) PlaybackStopped?.Invoke();
     }
 
-    private void CleanupOutput()
+    private void StopGeneration(int generation)
+    {
+        IWavePlayer? output;
+        bool was;
+        lock (_lock)
+        {
+            if (generation != _playGen) return;
+            _playGen++;
+            was = IsPlaying;
+            output = DetachOutput();
+            IsPlaying = false;
+        }
+        // Read 回调线程不能 Stop/Join 自己；在后台完成设备停止和释放。
+        QueueCleanup(output);
+        if (was) PlaybackStopped?.Invoke();
+    }
+
+    private IWavePlayer? DetachOutput()
     {
         if (_current != null) _current.BlockPlayed -= OnBlockPlayed;
         _current = null;
-        if (_output != null)
+        var output = _output;
+        if (output != null) output.PlaybackStopped -= OnStopped;
+        _output = null;
+        return output;
+    }
+
+    private static void QueueCleanup(IWavePlayer? output)
+    {
+        if (output == null) return;
+        _ = Task.Run(() =>
         {
-            _output.PlaybackStopped -= OnStopped;
-            try { _output.Stop(); } catch { /* 设备可能已拔出 */ }
-            _output.Dispose();
-            _output = null;
-        }
+            try { output.Stop(); } catch { /* 设备可能已拔出 */ }
+            try { output.Dispose(); } catch { /* 停止失败也必须尝试释放 */ }
+        });
     }
 
     /// <summary>设备被拔出时停止播放并更新状态，不丢工程。</summary>
@@ -214,7 +242,13 @@ public sealed class AudioPlaybackService : IDisposable
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         Stop(immediate: true);
+        if (_enumerator != null) _ = Task.Run(() =>
+        {
+            try { _enumerator.UnregisterEndpointNotificationCallback(_notificationStub); } catch { }
+            try { _enumerator.Dispose(); } catch { }
+        });
     }
 
     /// <summary>输出设备移除通知（COM 回调适配）。</summary>
@@ -286,6 +320,7 @@ public sealed class AudioPlaybackService : IDisposable
         private double _fadeLevel = 1;
         private double _fadeStep;
         private bool _fading;
+        private bool _fadeEnded;
         private long _framesRead;
 
         public event Action? FadeCompleted;
@@ -315,7 +350,7 @@ public sealed class AudioPlaybackService : IDisposable
             int frames = n / ch;
             for (int f = 0; f < frames; f++)
             {
-                float g = _gain;
+                float g = _fadeEnded ? 0 : _gain;
                 if (_fading)
                 {
                     g *= (float)Math.Max(0.0, _fadeLevel);
@@ -324,6 +359,7 @@ public sealed class AudioPlaybackService : IDisposable
                     {
                         _fadeLevel = 0;
                         _fading = false;
+                        _fadeEnded = true;
                         FadeCompleted?.Invoke();
                     }
                 }

@@ -7,15 +7,15 @@ pushd "%~dp0"
 if "%~1"=="test" goto :test
 if "%~1"=="debug" goto :debug
 
-echo [1/2] 构建自包含发布包 → publish\
-dotnet publish src/GunMix.App/GunMix.App.csproj -c Release -r win-x64 --self-contained true -o publish
+echo [1/2] 构建自包含发布包 → publish-v0.3.3\
+dotnet publish src/GunMix.App/GunMix.App.csproj -c Release -r win-x64 --self-contained true -o publish-v0.3.3
 if errorlevel 1 goto :fail
 
 echo [2/2] 运行测试
 dotnet test tests/GunMix.Core.Tests/GunMix.Core.Tests.csproj
 if errorlevel 1 goto :fail
 
-echo 完成：publish\GunMix.App.exe
+echo 完成：publish-v0.3.3\GunMix.App.exe
 popd
 exit /b 0
 

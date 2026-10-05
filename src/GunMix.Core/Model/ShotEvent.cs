@@ -16,6 +16,8 @@ public sealed record ShotEvent
     public string? AliasId { get; init; }
     public int? RowIndex { get; init; }
     public string SourceHash { get; init; } = "";
+    public string? SoundReference { get; init; }
+    public Guid? AssetOwnerWeaponId { get; init; }
     public string RuleOrigin { get; init; } = "legacyProjectRules";
     public string SelectionReason { get; init; } = "";
     public Fire.FireContext? ContextSnapshot { get; init; }

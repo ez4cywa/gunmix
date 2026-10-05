@@ -169,6 +169,8 @@ public partial class ExportDialog : Window
 
     private void RunExport(IReadOnlyList<ManifestKind> kinds)
     {
+        // 清单及绑定集合在界面线程更新，混音、读盘和写盘才进入后台。
+        _vm.PrepareExportManifests();
         var options = BuildOptions(
             kinds.Contains(ManifestKind.Single),
             kinds.Contains(ManifestKind.Burst));

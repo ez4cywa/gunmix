@@ -61,7 +61,7 @@ public partial class FireStudioWindow : Window
                 if(Profile.Banks.All(b=>b.BankKey!=bank.BankKey))Profile.Banks.Add(bank);
                 foreach(var row in bank.Rows.Where(r=>r.ResolvedPath!=null).DistinctBy(r=>r.SourceHash))
                 {
-                    if(_vm.Project.Assets.Concat(_pending).Any(a=>a.WeaponId==_vm.Project.ActiveWeapon!.Id&&a.Sha256==row.SourceHash))continue;
+                    if(_vm.Project.Assets.Concat(_pending).Any(a=>string.Equals(a.Sha256,row.SourceHash,StringComparison.OrdinalIgnoreCase)))continue;
                     var (format,error)=WavReader.ReadFormat(row.ResolvedPath!);
                     if(format==null){bank.Diagnostics.Add(error??"素材格式无法读取");continue;}
                     var file=Path.GetFileName(row.ResolvedPath!);var parsed=NameParser.Parse(file);

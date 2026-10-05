@@ -1,10 +1,10 @@
 ; 枪声分层工作台 安装包（Windows x64）
 ; 用法：ISCC.exe setup.iss
-; 产物：..\dist\GunMix_Setup_0.2.0.exe
+; 产物：..\dist\GunMix_Setup_0.3.3.exe
 
 #define AppName "枪声分层工作台"
 #define AppNameEn "GunMix"
-#define AppVersion "0.3.0"
+#define AppVersion "0.3.3"
 #define AppPublisher "EZ4"
 #define AppExeName "GunMix.App.exe"
 ; AppId 一旦确定不要修改，否则升级安装会被识别为另一个程序
@@ -43,7 +43,7 @@ Name: desktopicon; Description: "创建桌面快捷方式"; GroupDescription: "�
 
 [Files]
 ; 自包含安装包（.NET 运行时已内置，无需另行安装 .NET）
-Source: "..\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\publish-v{#AppVersion}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\使用说明.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 
